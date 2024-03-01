@@ -1,0 +1,20 @@
+// Global (g_) pointers (p) to gui structs
+Set g_pganghpgui 0x3D9EB8
+Set g_pcoingui 0x3E103C
+Set g_pbottlegui 0x3E1048
+Set g_pdiscejectgui 0x3DA514
+Set g_pblackbargui 0x2E1E60
+Set g_pinfoboxgui 0x3DA0E8
+Set g_pmasktransitiongui 0x443794
+Set g_pjobfailgui 0x3E0ABC
+Set g_pthiefnetgui 0x3DA174
+
+// Struct's fields
+Set GuiElementIDOff 0x14
+Set GuiNextGuiOff 0x20
+Set GuiPrevGuiOff 0x28
+Set GuiActiveFlagOff 0x64
+Set GuiActiveTimerOff 0x88
+Set GuiHPosOff 0x9C
+Set GuiVPosOff 0xA0
+Set GuiLayerOff 0xA4

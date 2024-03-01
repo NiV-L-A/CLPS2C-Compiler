@@ -1,0 +1,9 @@
+Set MapID 0x3E1110
+Set JobID 0x2DEB44
+Set Reload 0x3E1080
+Set ResetCamera 0x2DE240
+Set EngineUpTime 0x2DDF0C
+Set LevelUpTime 0x2DDED0
+Set DrawDistance 0x2DDF5C
+Set GuardAiFlag 0x3E1214
+Set EpisodesUnlocked 0x5975E8

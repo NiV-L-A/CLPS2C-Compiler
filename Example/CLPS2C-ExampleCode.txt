@@ -1,0 +1,25 @@
+// Declaration of variables which will be used later
+Set MapID 0x3E1110
+Set JobID 0x67381C
+Set Player 0x2E1E40
+Set CharHP 3D4AB0
+Set CharHPMax 40
+Set CoinCount 3D4B00
+Set MyStr "Parkour_Start\0"
+
+// Function to teleport the player to a location
+Function WriteXYZ(base, valueX, valueY, valueZ)
+    WritePointerFloat base,58,30 valueX
+    WritePointerFloat base,58,34 valueY
+    WritePointerFloat base,58,38 valueZ
+EndFunction
+
+// Main code
+If MapID =: 3 // If in world 3
+    Write32 FB1580 0x123
+    If JobID !. 0xFF && CoinCount =: 0 // If not in a job and the player has 0 coins
+        Call WriteXYZ(Player, 1500, 2000, 600) // Warp player on top of the house
+    EndIf
+    Write32 CharHP CharHPMax // Set the player's hp to 40
+    WriteString 0x87310 MyStr
+EndIf

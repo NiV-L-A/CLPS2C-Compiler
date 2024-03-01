@@ -1,0 +1,21 @@
+// Global (g_) pointers (p) to entity structs
+// Gang
+Set g_pactchar 0x2DE2F0 // active character
+Set g_pjt 0x2E1E40 // Sly
+Set g_pbentley 0x2DD5BC // Bentley
+Set g_pmurray 0x2F7900 // Murray
+
+// Other characters
+Set g_pcarmelita 0x3E07BC // Carmelita
+Set g_pneyla 0x3E0798 // Neyla
+Set g_pdimitri 0x3E078C // Dimitri
+Set g_pcontessa 0x3E07C8 // Contessa
+Set g_pjeanbison 0x3E07B0 // Jean Bison
+Set g_parpeggio 0x3E07D4 // Arpeggio
+
+// Function to teleport the player to a location
+Function WriteXYZ(base, valueX, valueY, valueZ)
+	WritePointerFloat base,58,30 valueX
+	WritePointerFloat base,58,34 valueY
+	WritePointerFloat base,58,38 valueZ
+EndFunction

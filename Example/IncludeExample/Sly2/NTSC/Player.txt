@@ -1,0 +1,10 @@
+// Gang's hp
+Set g_cjthp 0x3D4AB0
+Set g_cbentleyhp 0x3D4AC8
+Set g_cmurrayhp 0x3D4AE0
+
+// Misc global variables
+Set g_cactcharid 0x3D4A6C
+Set g_ccoin 0x3D4B00
+Set g_gadget1 0x3D4AF8
+Set g_gadget2 0x3D4AFC
