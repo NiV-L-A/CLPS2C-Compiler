@@ -29,7 +29,7 @@ namespace CLPS2C_Compiler
         private static List<Function_t> _functionList = new(); // List to store the function definitions
         private static Dictionary<string, string> _commandsDict = new(); // Dictionary for the commands that have abbreviations.
         private static Encoding _currentEncoding = Encoding.UTF8;
-        private static Regex _ifRegex = new(@"If (\w+\s*(?:\+\s*-?(0x)?[0-9A-Fa-f]{1,8})*) ([=!<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-Fa-f]{1,8}|\+\s*-?(?!0x)\d+)*)(?: (&&) (\w+\s*(?:\+\s*-?(0x)?[0-9A-Fa-f]{1,8})*) ([!=<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-Fa-f]{1,8}|\+\s*-?(?!0x)\d+)*))*$");
+        private static Regex _ifRegex = new(@"If (\w+\s*(?:\+\s*-?(0x)?[0-9A-F]{1,8})*) ([=!<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-F]{1,8}|\+\s*-?(?!0x)\d+)*)(?: (&&) (\w+\s*(?:\+\s*-?(0x)?[0-9A-F]{1,8})*) ([!=<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-F]{1,8}|\+\s*-?(?!0x)\d+)*))*$", RegexOptions.IgnoreCase);
         private static Engine _keystone = new(Keystone.Architecture.MIPS, Mode.MIPS64) { ThrowOnError = false };
         private static ErrorInfo_t _errorInfo = new();
         private static ParserResult<ConsoleParserOptions>? _consoleParser;

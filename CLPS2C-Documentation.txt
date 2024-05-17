@@ -2,7 +2,7 @@
 
 
 CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-Version: 1.0.0
+Version: 1.0.1
 GitHub: https://github.com/NiV-L-A/CLPS2C-Compiler
 
 

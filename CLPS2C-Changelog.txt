@@ -1,2 +1,6 @@
+Version 1.0.1 (17/05/2024)
+    - Fixed bugs:
+        - Added case-insensitivity for the "If" command (used to throw a WRONG_SYNTAX error when the command's type was "if", "iF" and "IF").
+
 Version 1.0.0 (02/03/2024)
     - Initial version
