@@ -1,5 +1,5 @@
 # CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-<p align="center">
+<p style="text-align: center">
   <img width="256" height="256" src="CLPS2C-Compiler/256x256.ico">
 </p>
 
@@ -86,6 +86,14 @@ CLPS2C-Compiler.exe
   --help          Display an help screen.
   --version       Display version information.
 ```
+
+It is recommended to use [vscode-clps2c](https://github.com/NiV-L-A/vscode-clps2c), a Visual Studio Code extension for .clps2c files.
+<p style="text-align: center">
+  <img src="https://raw.githubusercontent.com/NiV-L-A/vscode-CLPS2C/master/Image1.png">
+</p>
+<p style="text-align: center">
+  <img src="https://raw.githubusercontent.com/NiV-L-A/vscode-CLPS2C/master/Image2.png">
+</p>
 
 ## TO-DO
 - WritePointerString, WritePointerBytes and FillBytes commands.

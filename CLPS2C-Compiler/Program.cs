@@ -1184,6 +1184,7 @@ namespace CLPS2C_Compiler
                     OpCode == "LBU" || OpCode == "LHU" || OpCode == "LWU")
                 {
                     Value_1 = Value_1.TrimStart(',');
+                    Value_1 = Value_1.Trim(); // "lw $t1, 0x2DE2F0"
                     uint Tmp = Convert.ToUInt32(Value_1, 16);
                     Value_2 = (Tmp & 0xFFFF).ToString("X4");
                     Value_1 = ((Tmp >> 16) & 0xFFFF).ToString("X4");

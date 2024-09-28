@@ -1,3 +1,12 @@
+Version 1.0.2 (28/09/2024)
+    - Updated keystone.
+    - Fixed bugs:
+        - Assembly: Fixed a crash when white space was present before the 2nd argument for load and store instructions that have an immediate value greater than 0x7FFF (example: "lw $t1, 0x2DE2F0").
+    - Changed documentation:
+        - Removed the "when not using a declared variable" sentence for the "Include (VALUE)" command.
+    - Changed README:
+        - Added an advertisement for vscode-clps2c.
+
 Version 1.0.1 (17/05/2024)
     - Fixed bugs:
         - Added case-insensitivity for the "If" command (used to throw a WRONG_SYNTAX error when the command's type was "if", "iF" and "IF").

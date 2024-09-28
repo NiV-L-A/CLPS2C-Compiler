@@ -2,7 +2,7 @@
 
 
 CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-Version: 1.0.1
+Version: 1.0.2
 GitHub: https://github.com/NiV-L-A/CLPS2C-Compiler
 
 
@@ -339,7 +339,7 @@ ASM_END
 
 Include (VALUE)
     Parses a specific file.
-    Condition for (VALUE): Always use the double quotes symbol (") as the prefix and suffix when not using a declared variable.
+    Condition for (VALUE): Always use the double quotes symbol (") as the prefix and suffix.
     It's possible that an Include command is present in an included file:
         For example, let the file "Engine.txt" have this line of code: Include "Player.txt"
         By including the "Engine.txt" file, it will also parse the line above, and so, also include the "Player.txt" file.
