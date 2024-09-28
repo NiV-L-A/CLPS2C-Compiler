@@ -1,5 +1,5 @@
 # CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-<p style="text-align: center">
+<p align="center">
   <img width="256" height="256" src="CLPS2C-Compiler/256x256.ico">
 </p>
 
@@ -88,10 +88,10 @@ CLPS2C-Compiler.exe
 ```
 
 It is recommended to use [vscode-clps2c](https://github.com/NiV-L-A/vscode-clps2c), a Visual Studio Code extension for .clps2c files.
-<p style="text-align: center">
+<p align="center">
   <img src="https://raw.githubusercontent.com/NiV-L-A/vscode-CLPS2C/master/Image1.png">
 </p>
-<p style="text-align: center">
+<p align="center">
   <img src="https://raw.githubusercontent.com/NiV-L-A/vscode-CLPS2C/master/Image2.png">
 </p>
 
@@ -102,7 +102,7 @@ It is recommended to use [vscode-clps2c](https://github.com/NiV-L-A/vscode-clps2
 
 ## Build instructions
 CLPS2C-Compiler uses a [modified version of keystone](https://github.com/NiV-L-A/keystone) to parse the MIPS assembly instructions.<br>
-The modification is a removal of an automatic addition of a "nop" instruction after any branch and jump instructions that act as a delay slot (see [issue #405](https://github.com/keystone-engine/keystone/issues/405) ).
+The modification is a removal of an automatic addition of a "nop" instruction after any branch and jump instructions that act as a delay slot (see [issue #405](https://github.com/keystone-engine/keystone/issues/405) ), among other fixes for the PS2 Emotion Engine CPU.
 1. Clone the CLPS2C-Compiler repository by clicking on the "Code" button and selecting "Open with Visual Studio".
 2. Download "keystone.dll" and "Keystone.Net.dll" from the ["Releases" page of this fork of keystone](https://github.com/NiV-L-A/keystone/releases).
 3. Place the 2 .dll files in the CLPS2C-Compiler/CLPS2C-Compiler folder (where the .csproj file is). They should appear in the Solution Explorer window in Visual Studio.
