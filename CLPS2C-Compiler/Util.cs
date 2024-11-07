@@ -472,7 +472,7 @@ namespace CLPS2C_Compiler
             return listSets.Any(y => y.Name == target);
         }
 
-        public static List<string> GetSetValueFromTarget(string target, int id, List<LocalVar_t> listSets)
+        public static List<string> GetSetValuesFromTarget(string target, int id, List<LocalVar_t> listSets)
         {
             // Based on a string "target", find the closest "Set" (considering the id) in which the (NAME) parameter has the target value
             List<LocalVar_t> PossibleSets = listSets.Where(item => item.Name == target).ToList();
@@ -493,7 +493,7 @@ namespace CLPS2C_Compiler
 
                 if (IsVarDeclared(Element, listSets))
                 {
-                    List<string> RecursiveValues = GetSetValueFromTarget(Element, SetID, listSets);
+                    List<string> RecursiveValues = GetSetValuesFromTarget(Element, SetID, listSets);
                     if (RecursiveValues.Count != 0)
                     {
                         if (Output[i].StartsWith('+'))
@@ -580,7 +580,6 @@ namespace CLPS2C_Compiler
                          .Replace("t4", "12").Replace("t5", "13")
                          .Replace("t6", "14").Replace("t7", "15");
         }
-
 
         public enum ERROR : int
         {

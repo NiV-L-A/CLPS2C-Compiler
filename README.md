@@ -11,8 +11,8 @@ Please, refer to the [CLPS2C Changelog](/CLPS2C-Changelog.txt) file for informat
 ## Goal and intention
 The main goal of the project is to have better managment and readability when cheats become too big/complex.<br>
 The app supports, among other things:
-- Write all code types supported by Cheat Device / ps2rd / CodeBreaker
-- Output RAW cheat lines (or Pnach-formatted cheat lines)
+- Write all code types supported by ps2rd and Cheat Device
+- Output RAW or pnach-formatted cheat lines
 - Write MIPS Assembly
 - Automatic calculation for how many lines to execute in "If" commands
 - Support for logical AND in "If" commands

@@ -2,7 +2,7 @@
 
 
 CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-Version: 1.0.2
+Version: 1.0.3
 GitHub: https://github.com/NiV-L-A/CLPS2C-Compiler
 
 
@@ -12,8 +12,9 @@ GitHub: https://github.com/NiV-L-A/CLPS2C-Compiler
 Table Of Contents:
 (1) Description and Settings
 (2) List of commands
-(3) Example code
-(4) Credits
+(3) Example code (CLPS2C)
+(4) Example code (CLPS2C - Assembly)
+(5) Credits
 
 
 ///////////////////////////////////////////////////////////////////////
@@ -25,8 +26,8 @@ _/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 CLPS2C is a domain-specific language, built specifically for writing PS2 cheat codes.
 The main goal of the project is to have better managment and readability when cheats become too big/complex.
 The app supports, among other things:
-- Write all code types supported by Cheat Device / ps2rd / CodeBreaker
-- Output RAW cheat lines (or Pnach-formatted cheat lines)
+- Write all code types supported by ps2rd and Cheat Device
+- Output RAW or pnach-formatted cheat lines
 - Write MIPS Assembly
 - Automatic calculation for how many lines to execute in "If" commands
 - Support for logical AND in "If" commands
@@ -52,7 +53,7 @@ Usage: CLPS2C-Compiler.exe
   adding the prefix "0x" will make them hexadecimal
   adding the prefix "-" (hyphen symbol, not the dash symbol "—") will make them negative
   and placing the (VALUE) between quotes (") will make them a string.
-- All (ADDRESS) and (VALUE) can be replaced with variables
+- Some (ADDRESS) and (VALUE) arguments can be replaced with variables
   previously declared by using the "Set" command.
 - Support for the addition operator "+".
   The + operator is used for performing addition between two operands.
@@ -134,9 +135,9 @@ The following is a list of possible errors:
 
 ///////////////////////////////////////////////////////////////////////
 
-_/|\-/|\-/|\-/|\-/|\_
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 (2) List of commands
-_/|\-/|\-/|\-/|\-/|\_
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 
 The following is a list of commands supported in CLPS2C, in which () are the arguments and [] are the optional arguments.
 Some commands might have an abbreviation. This is indicated with the pipe ("|") symbol.
@@ -193,7 +194,7 @@ Set (NAME) (VALUE)
     Once a variable is declared, declaring it once again
     will replace its value.
     A variable can assume the value of an already declared variable.
-    NOTE: This instruction does not get translated to a cheat code.
+    NOTE: This command does not output a cheat line.
 
     Arguments:
         (NAME)  Name of the variable
@@ -220,7 +221,7 @@ Set (NAME) (VALUE)
 SetEncoding|SE (VALUE)
     Sets the current encoding (VALUE) to be used for the WriteString command.
     The encoding chosen will be used until another SetEncoding command is encountered.
-    NOTE: This instruction does not get translated to a cheat code.
+    NOTE: This command does not output a cheat line.
     
     Arguments:
         (VALUE)
@@ -239,7 +240,6 @@ SetEncoding|SE (VALUE)
 SendRaw|SR (VALUE)
     Writes a raw string (VALUE) to the output.
     Condition for (VALUE): Always use the double quotes symbol (") as the prefix and suffix when not using a declared variable.
-    NOTE: This instruction does not get translated to a cheat code.
     
     Arguments:
         (VALUE) Value to write
@@ -293,7 +293,7 @@ ASM_START (ADDRESS)
 ASM_END
     Defines the beginning and ending of an assembly scope.
     While in this scope, all the other CLPS2C commands can't be executed (with the exception of the ASM_END command).
-    While in this scope, values set with the Set command will not be applied.
+    While in this scope, values set with the Set command will not be applied, with the exception of the "J" and "JAL" opcodes.
     Every register must be prefixed with the dollar sign ($).
     Labels can be used, but the first instruction must be on the same line as the label ("myLabel: li $t0,1").
     Always have an ASM_END command to indicate the termination of the assembly scope.
@@ -303,37 +303,72 @@ ASM_END
         (ADDRESS) Starting address
     
     Usage:
-    ASM_START 003D1000
-        addi $t2,$t1,0x0058 // $t2 = $t1 + 0x58
-    ASM_END
-    
-    Set Cave 203D1000
-    ASM_START Cave
-        /*Load immediate ($t0 = 0x003D10A0). Equivalent to "lui $t0,0x003D; ori $t0,$t0,0x10A0".*/
-        li $t0,0x003D10A0
-        /*Load word ($t0 = *0x003D10A0). Reads 4 bytes at the specified address and stores the value in the specified register.*/
-        /*Equivalent to "lui $t0,0x003D; lw $t0,0x10A0($t0)".*/
-        lw $t0,0x003D10A0
-        /*Load immediate in a float register. Loads 60f in the $f4 register.*/
-        li $t0,60 // load 60 as int in $t0.
-        mtc1 $t0,$f4 // move to coprocessor 1 (FPU)'s register $f4.
-        cvt.s.w $f4,$f4 // converts a word to a floating point (60 -> 60f).
-    ASM_END
+        ASM_START 003D1000
+            addi $t2,$t1,0x0058 // $t2 = $t1 + 0x58
+        ASM_END
+        
+        Set Cave 203D1000
+        ASM_START Cave
+            /*Load immediate ($t0 = 0x003D10A0). Equivalent to "lui $t0,0x003D; ori $t0,$t0,0x10A0".*/
+            li $t0,0x003D10A0
 
-    ASM_START 200FF000 + 0x10
-        // check flag
-        lw $t0,0x003D0D00
-        li $at,0x1
-        beq $t0,$at,DisableFlag // if flag == 1
-        nop
-        b Exit
-        nop
-        DisableFlag: li $at,0 // disable flag
-            lui $t0,0x003D
-            sw $at,0xD00($t0)
-        Exit: jr $ra // return
+            /*Load word ($t0 = *0x003D10A0). Reads 4 bytes at the specified address and stores the value in the specified register.*/
+            /*Equivalent to "lui $t0,0x003D; lw $t0,0x10A0($t0)".*/
+            lw $t0,0x003D10A0
+
+            /*Load immediate in a float register. Loads 60f in the $f4 register.*/
+            li $t0,60 // load 60 as int in $t0.
+            mtc1 $t0,$f4 // move to coprocessor 1 (FPU)'s register $f4.
+            cvt.s.w $f4,$f4 // converts a word to a floating point (60 -> 60f).
+
+            /*Load immediate in a float register. Loads 1f in the $f12 register.*/
+            lui $t0,0x3F80 // load 0x3F800000 in $t0 (0x3F800000 is 1 in float).
+            mtc1 $t0,$f12 // move to coprocessor 1 (FPU)'s register $f12.
+        ASM_END
+        
+        /* Example with JAL instruction that uses a set variable */
+        Set myFunction 0xF0EE0
+        ASM_START 0x1A761C // hook
+            jal myFunction // values set with the Set command are only available for the "J" and "JAL" opcodes
             nop
-    ASM_END
+        ASM_END
+        ASM_START myFunction // codecave
+            // increment frame counter
+            lw $v0,-0x1AC8($s1)
+            addiu $v0,$v0,0x1
+            jr $ra
+            nop
+        ASM_END
+        
+        /* Example with J instruction that uses a set variable */
+        Set hook 0x1A761C
+        Set codeCave 0xF0EE0
+        ASM_START hook
+            j codeCave // values set with the Set command are only available for the "J" and "JAL" opcodes
+            nop
+        ASM_END
+        ASM_START codeCave
+            // increment frame counter
+            lw $v0,-0x1AC8($s1)
+            addiu $v0,$v0,0x1
+            j hook+0x8 // go to hook + 0x8 (0x8 = 0x4 + 0x4 = "j codeCave" + the delay slot)
+            nop
+        ASM_END
+        
+        ASM_START 200FF000 + 0x10
+            // check flag
+            lw $t0,0x003D0D00
+            li $at,0x1
+            beq $t0,$at,DisableFlag // if flag == 1
+            nop
+            b Exit
+            nop
+            DisableFlag: li $at,0 // disable flag
+                lui $t0,0x003D
+                sw $at,0xD00($t0) // can also get the value 0 from the register $zero instead of loading the value in the register $at
+            Exit: jr $ra // return
+                nop
+        ASM_END
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -430,7 +465,7 @@ Call (NAME)([ARGUMENTS])
 ///////////////////////////////////////////////////////////////////////
 
 Write8|W8 (ADDRESS) (VALUE)
-    Writes an 8-bit (1 byte) value (VALUE) to the address (ADDRESS).
+    Writes the 8-bit (1 byte) value (VALUE) to the address (ADDRESS).
     Condition for (VALUE): 0x00 <= (VALUE) <= 0xFF
     
     Arguments:
@@ -451,7 +486,7 @@ Write8|W8 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 Write16|W16 (ADDRESS) (VALUE)
-    Writes a 16-bit (2 bytes) value (VALUE) to the address (ADDRESS).
+    Writes the 16-bit (2 bytes) value (VALUE) to the address (ADDRESS).
     Condition for (VALUE): 0x0000 <= (VALUE) <= 0xFFFF
     
     Arguments:
@@ -472,7 +507,7 @@ Write16|W16 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 Write32|W32 (ADDRESS) (VALUE)
-    Writes a 32-bit (4 bytes) value (VALUE) to the address (ADDRESS).
+    Writes the 32-bit (4 bytes) value (VALUE) to the address (ADDRESS).
     Condition for (VALUE): 0x00000000 <= (VALUE) <= 0xFFFFFFFF
 
     Arguments:
@@ -493,7 +528,7 @@ Write32|W32 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WriteFloat|WF (ADDRESS) (VALUE)
-    Writes a 32-bit floating-point value (VALUE) to the address (ADDRESS).
+    Writes the 32-bit floating-point value (VALUE) to the address (ADDRESS).
     If (VALUE) is an hexadecimal number, it will be parsed as one.
     
     Arguments:
@@ -521,7 +556,7 @@ WriteFloat|WF (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WriteString|WS (ADDRESS) (VALUE)
-    Writes a string (VALUE) to the address (ADDRESS) with the current encoding (can be changed with the SetEncoding command).
+    Writes the string (VALUE) to the address (ADDRESS) with the current encoding (can be changed with the SetEncoding command).
     Condition for (VALUE): Always use the double quotes symbol (") as the prefix and suffix when not using a declared variable.
     NOTE: Append "\0" at the end of the string to add a null terminator character.
     NOTE: When ((VALUE).Length % 4 != 0), more writes of different data types are needed:
@@ -554,7 +589,7 @@ WriteString|WS (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WriteBytes|WB (ADDRESS) (VALUE)
-    Writes a byte array (VALUE) to the address (ADDRESS).
+    Writes the byte array (VALUE) to the address (ADDRESS).
     Condition for (VALUE): Always use the double quotes symbol (") as the prefix and suffix when not using a declared variable.
     NOTE: When ((VALUE).Length % 4 != 0), more writes of different data types are needed:
       "00 11 22 33"          -> Write32.
@@ -579,7 +614,7 @@ WriteBytes|WB (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WritePointer8|WP8 (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
-    Writes an 8-bit (1 byte) value (VALUE) to the address calculated by
+    Writes the 8-bit (1 byte) value (VALUE) to the address calculated by
     loading the base (ADDRESS1) and adding (ADDRESS2) and [,ADDRESSN].
     Each (ADDRESS) must be separated by a comma (,).
     Condition for (VALUE): 0x00 <= (VALUE) <= 0xFF
@@ -602,7 +637,7 @@ WritePointer8|WP8 (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WritePointer16|WP16 (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
-    Writes a 16-bit (2 bytes) value (VALUE) to the address calculated by
+    Writes the 16-bit (2 bytes) value (VALUE) to the address calculated by
     loading the base (ADDRESS1) and adding (ADDRESS2) and [,ADDRESSN].
     Each (ADDRESS) must be separated by a comma (,).
     Condition for (VALUE): 0x0000 <= (VALUE) <= 0xFFFF
@@ -625,7 +660,7 @@ WritePointer16|WP16 (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WritePointer32|WP32 (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
-    Writes a 32-bit (4 bytes) value (VALUE) to the address calculated by
+    Writes the 32-bit (4 bytes) value (VALUE) to the address calculated by
     loading the base (ADDRESS1) and adding (ADDRESS2) and [,ADDRESSN].
     Each (ADDRESS) must be separated by a comma (,).
     Condition for (VALUE): 0x00000000 <= (VALUE) <= 0xFFFFFFFF
@@ -648,7 +683,7 @@ WritePointer32|WP32 (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 WritePointerFloat|WPF (ADDRESS1),(ADDRESS2)[,ADDRESSN] (VALUE)
-    Writes a 32-bit floating-point value (VALUE) to the address calculated by
+    Writes the 32-bit floating-point value (VALUE) to the address calculated by
     loading the base (ADDRESS1) and adding (ADDRESS2) and [,ADDRESSN].
     Each (ADDRESS) must be separated by a comma (,).
     If (VALUE) is an hexadecimal number, it will be parsed as one.
@@ -691,11 +726,11 @@ CopyBytes|CB (ADDRESS1) (ADDRESS2) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 Fill8|F8 (ADDRESS) (VALUE1) (VALUE2)
-    Writes an 8-bit (1 byte) value (VALUE1) for (VALUE2) bytes starting from the address (ADDRESS).
+    Writes the 8-bit (1 byte) value (VALUE1) for (VALUE2) bytes starting from the address (ADDRESS).
     Condition for (VALUE1): 0x00 <= (VALUE1) <= 0xFF
     Condition for (VALUE2): 0x00 <= (VALUE2) <= 0xFFFF
     NOTE: This command outputs a 8-type code ("8-bit constant serial write").
-        Latest PCSX2 (v1.7.X) does not support 8-type codes.
+        Latest PCSX2 (v2.2.0) does not support 8-type codes.
     
     Arguments:
         (ADDRESS) Starting address
@@ -716,12 +751,12 @@ Fill8|F8 (ADDRESS) (VALUE1) (VALUE2)
 ///////////////////////////////////////////////////////////////////////
 
 Fill16|F16 (ADDRESS) (VALUE1) (VALUE2)
-    Writes a 16-bit (2 bytes) value (VALUE1) for (VALUE2) bytes starting from the address (ADDRESS).
+    Writes the 16-bit (2 bytes) value (VALUE1) for (VALUE2) bytes starting from the address (ADDRESS).
     Condition for (VALUE1): 0x00 <= (VALUE1) <= 0xFFFF
     Condition for (VALUE2): 0x00 <= (VALUE2) <= 0x1FFFE
     NOTE: (VALUE2) must be divisible by 2.
     NOTE: This command outputs a 8-type code ("16-bit constant serial write").
-        Latest PCSX2 (v1.7.X) does not support 8-type codes.
+        Latest PCSX2 (v2.2.0) does not support 8-type codes.
     
     Arguments:
         (ADDRESS) Starting address
@@ -742,11 +777,10 @@ Fill16|F16 (ADDRESS) (VALUE1) (VALUE2)
 ///////////////////////////////////////////////////////////////////////
 
 Fill32|F32 (ADDRESS) (VALUE1) (VALUE2)
-    Writes a 32-bit (4 bytes) value (VALUE1) for (VALUE2) bytes starting from the address (ADDRESS).
+    Writes the 32-bit (4 bytes) value (VALUE1) for (VALUE2) bytes starting from the address (ADDRESS).
     Condition for (VALUE1): 0x00 <= (VALUE1) <= 0xFFFFFFFF
     Condition for (VALUE2): 0x00 <= (VALUE2) <= 0x3FFFC
     NOTE: (VALUE2) must be divisible by 4.
-    NOTE: This command outputs a 4-type code ("32-bit constant serial write").
     
     Arguments:
         (ADDRESS) Starting address
@@ -881,7 +915,8 @@ Decrement32|D32 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 OR8 (ADDRESS) (VALUE)
-    Bitwise 8-bit (1 byte) OR operation between the value stored at address (ADDRESS) and (VALUE). Store the result at the address (ADDRESS).
+    Bitwise 8-bit (1 byte) OR operation between the value stored at address (ADDRESS) and (VALUE).
+    Store the result at the address (ADDRESS).
     
     Arguments:
         (ADDRESS) The address to which the value will be read from and written to
@@ -900,7 +935,8 @@ OR8 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 OR16 (ADDRESS) (VALUE)
-    Bitwise 16-bit (2 bytes) OR operation between the value stored at address (ADDRESS) and (VALUE). Store the result at the address (ADDRESS).
+    Bitwise 16-bit (2 bytes) OR operation between the value stored at address (ADDRESS) and (VALUE).
+    Store the result at the address (ADDRESS).
     
     Arguments:
         (ADDRESS) The address to which the value will be read from and written to
@@ -919,7 +955,8 @@ OR16 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 AND8 (ADDRESS) (VALUE)
-    Bitwise 8-bit (1 byte) AND operation between the value stored at address (ADDRESS) and (VALUE). Store the result at the address (ADDRESS).
+    Bitwise 8-bit (1 byte) AND operation between the value stored at address (ADDRESS) and (VALUE).
+    Store the result at the address (ADDRESS).
     
     Arguments:
         (ADDRESS) The address to which the value will be read from and written to
@@ -938,7 +975,8 @@ AND8 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 AND16 (ADDRESS) (VALUE)
-    Bitwise 16-bit (2 bytes) AND operation between the value stored at address (ADDRESS) and (VALUE). Store the result at the address (ADDRESS).
+    Bitwise 16-bit (2 bytes) AND operation between the value stored at address (ADDRESS) and (VALUE).
+    Store the result at the address (ADDRESS).
     
     Arguments:
         (ADDRESS) The address to which the value will be read from and written to
@@ -957,7 +995,8 @@ AND16 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 XOR8 (ADDRESS) (VALUE)
-    Bitwise 8-bit (1 byte) XOR operation between the value stored at address (ADDRESS) and (VALUE). Store the result at the address (ADDRESS).
+    Bitwise 8-bit (1 byte) XOR operation between the value stored at address (ADDRESS) and (VALUE).
+    Store the result at the address (ADDRESS).
     
     Arguments:
         (ADDRESS) The address to which the value will be read from and written to
@@ -976,7 +1015,8 @@ XOR8 (ADDRESS) (VALUE)
 ///////////////////////////////////////////////////////////////////////
 
 XOR16 (ADDRESS) (VALUE)
-    Bitwise 16-bit (2 bytes) XOR operation between the value stored at address (ADDRESS) and (VALUE). Store the result at the address (ADDRESS).
+    Bitwise 16-bit (2 bytes) XOR operation between the value stored at address (ADDRESS) and (VALUE).
+    Store the result at the address (ADDRESS).
     
     Arguments:
         (ADDRESS) The address to which the value will be read from and written to
@@ -1080,9 +1120,9 @@ EndIf|EI
 
 ///////////////////////////////////////////////////////////////////////
 
-_/|\-/|\-/|\-/|\_
-(3) Example code
-_/|\-/|\-/|\-/|\_
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
+(3) Example code (CLPS2C)
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 
 Below is a CLPS2C example code with its output.
 
@@ -1112,9 +1152,9 @@ If MapID =: 3 // If in world 3
     WriteString 0x87310 MyStr
 EndIf
 
-_/|\-/|\-/|\-/|\-/|\_
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 (3B) Output:
-_/|\-/|\-/|\-/|\-/|\_
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 
 E0110003 003E1110
 20FB1580 00000123
@@ -1197,9 +1237,116 @@ patch=1,EE,1008731C,extended,00000074
 
 ///////////////////////////////////////////////////////////////////////
 
-_/|\-/|\-/|\_
-(4) Credits
-_/|\-/|\-/|\_
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
+(4) Example code (CLPS2C - Assembly)
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
+
+Below is a CLPS2C example code that uses assembly with its output.
+
+// Write the active character's XYZ coordinates (accessed by a pointer)
+// to a specific address (003D0E10/4/8)
+// If the value at 003D0D00 is 1, then get the values from 003D0E10/4/8
+// and write them to the active character's coordinates
+// - 002DE2F0,0x58,0x30/4/8 active character's coords 
+// - 003D1000 address to store our assembly code (codecave)
+// - 003D0E10/4/8 address to store a copy of the coords
+// - 003D0D00 custom flag. If it's 1, get the values from 003D0E00/4/8 and write them to the active character's coords
+Set Cave 003D1000
+ASM_START Cave
+    // Go to the active character's transformation component
+    lw $t1,0x2DE2F0 // read active character pointer
+    addi $t2,$t1,0x58 // add transformation offset
+    lw $t2,($t2) // read the transformation pointer
+    // Our target address (where we want to store the coords) is at 003D0E10
+    lui $at,0x3D // All of our custom addresses are at 003Dnnnn. Load 003D0000
+    lw $t3,0x30($t2) // get x coord
+    lw $t4,0x34($t2) // get y coord
+    lw $t5,0x38($t2) // get z coord
+    sw $t3,0xE10($at) // store x coord at custom address
+    sw $t4,0xE14($at) // store y coord at custom address
+    sw $t5,0xE18($at) // store z coord at custom address
+    // Check flag
+    lw $t0,0xD00($at)
+    li $t1,0x1
+    beq $t0,$t1,SetCustomCoords // if the value at 003D0D00 == 1, then branch to SetCustomCoords
+    nop // delay slot. Before taking the branch, the cpu will execute this line. Let's place a nop so it doesn't do anything.
+    b Exit // else, branch to Exit
+    nop // delay slot
+    SetCustomCoords: sw $zero,0xD00($at) // set flag to 0
+        lw $t3,0xE00($at) // load custom x coord
+        lw $t4,0xE04($at) // load custom y coord
+        lw $t5,0xE08($at) // load custom z coord
+        sw $t3,0x30($t2) // store x coord
+        sw $t4,0x34($t2) // store y coord
+        sw $t5,0x38($t2) // store z coord
+    Exit: jr $ra // return
+        nop // delay slot
+ASM_END
+
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
+(4B) Output:
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
+
+203D1000 3C09002E
+203D1004 8D29E2F0
+203D1008 212A0058
+203D100C 8D4A0000
+203D1010 3C01003D
+203D1014 8D4B0030
+203D1018 8D4C0034
+203D101C 8D4D0038
+203D1020 AC2B0E10
+203D1024 AC2C0E14
+203D1028 AC2D0E18
+203D102C 8C280D00
+203D1030 24090001
+203D1034 11090003
+203D1038 00000000
+203D103C 10000008
+203D1040 00000000
+203D1044 AC200D00
+203D1048 8C2B0E00
+203D104C 8C2C0E04
+203D1050 8C2D0E08
+203D1054 AD4B0030
+203D1058 AD4C0034
+203D105C AD4D0038
+203D1060 03E00008
+203D1064 00000000
+
+With the argument "-p" (Pnach-formatted) enabled:
+patch=1,EE,203D1000,extended,3C09002E
+patch=1,EE,203D1004,extended,8D29E2F0
+patch=1,EE,203D1008,extended,212A0058
+patch=1,EE,203D100C,extended,8D4A0000
+patch=1,EE,203D1010,extended,3C01003D
+patch=1,EE,203D1014,extended,8D4B0030
+patch=1,EE,203D1018,extended,8D4C0034
+patch=1,EE,203D101C,extended,8D4D0038
+patch=1,EE,203D1020,extended,AC2B0E10
+patch=1,EE,203D1024,extended,AC2C0E14
+patch=1,EE,203D1028,extended,AC2D0E18
+patch=1,EE,203D102C,extended,8C280D00
+patch=1,EE,203D1030,extended,24090001
+patch=1,EE,203D1034,extended,11090003
+patch=1,EE,203D1038,extended,00000000
+patch=1,EE,203D103C,extended,10000008
+patch=1,EE,203D1040,extended,00000000
+patch=1,EE,203D1044,extended,AC200D00
+patch=1,EE,203D1048,extended,8C2B0E00
+patch=1,EE,203D104C,extended,8C2C0E04
+patch=1,EE,203D1050,extended,8C2D0E08
+patch=1,EE,203D1054,extended,AD4B0030
+patch=1,EE,203D1058,extended,AD4C0034
+patch=1,EE,203D105C,extended,AD4D0038
+patch=1,EE,203D1060,extended,03E00008
+patch=1,EE,203D1064,extended,00000000
+
+///////////////////////////////////////////////////////////////////////
+
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
+(5) Credits
+_/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 
 Author:
 - NiV-L-A
@@ -1214,10 +1361,10 @@ Special thanks:
 - commandline by commandlineparser: https://github.com/commandlineparser/commandline
 
 Useful links:
-- https://github.com/root670/CheatDevicePS2/wiki/Code-Types
+- https://slymods.info/wiki/Guide:Writing_pnach_files
 - https://github.com/mlafeldt/ps2rd/blob/master/Documentation/code_types.txt
 - https://github.com/zzamizz/weed-sheet/wiki/PNACH-Code-Types
-- https://slymods.info/wiki/Guide:Writing_pnach_files
+- https://github.com/root670/CheatDevicePS2/wiki/Code-Types
 - https://github.com/PCSX2/pcsx2/blob/master/pcsx2/Patch.cpp
 - https://github.com/root670/CheatDevicePS2/blob/master/engine/engine_asm.S
 - https://math-atlas.sourceforge.net/devel/assembly/mips-iv.pdf

@@ -1,3 +1,17 @@
+Version 1.0.3 (07/11/2024)
+    - Assembly:
+        - Added support for variables to be valid arguments for "J" and "JAL" opcodes.
+        - Added support for the addition operator "+" for "J" and "JAL" instructions argument.
+    - Fixed bugs:
+        - Keystone engine is now disposed when the application terminates.
+    - Changed documentation:
+        - Added a CLPS2C example code that uses assembly with its output.
+        - Specified that not all (ADDRESS) and (VALUE) arguments can be replaced with variables.
+        - Added an alternative method to load a float in a register.
+        - Added an example that uses the "J" and "JAL" instructions with a variable in an assembly scope.
+    - Changed README:
+        - Removed mention of CodeBreaker.
+
 Version 1.0.2 (28/09/2024)
     - Updated keystone.
     - Fixed bugs:

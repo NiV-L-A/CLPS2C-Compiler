@@ -36,7 +36,6 @@ namespace CLPS2C_Compiler
 
         // 1) Arg1: FilePath.                   Output in same folder, with the same file name + "-Output.txt"
         // 2) Arg1: FilePath.   Arg2: FilePath. Output to Arg2
-
         static void Main(string[] args)
         {
             bool PrintElapsedTimer = false;
@@ -81,9 +80,11 @@ namespace CLPS2C_Compiler
             List<string> Lines = File.ReadAllLines(_inputFilePath, Encoding.UTF8).ToList();
             PopulateAbbreviationDict();
             List<string> OutputLines = ParseLines(Lines);
-            string Output = "";
+            // Dispose keystone, we don't need it anymore
+            _keystone.Dispose();
 
             // Output
+            string Output = "";
             if (_error)
             {
                 Output = PrintError(_errorInfo);
@@ -172,7 +173,7 @@ namespace CLPS2C_Compiler
                         InAsmScope = false;
                         if (AsmLines.Count != 0)
                         {
-                            Commands[i].Output = HandleAsmEnd(Commands[i], AsmLines, ref AsmStartAddress, out Commands[i].Weight);
+                            Commands[i].Output = HandleAsmEnd(Commands[i], AsmLines, ListSets, ref AsmStartAddress, out Commands[i].Weight);
                             if (_error)
                             {
                                 return OutputLines;
@@ -183,7 +184,7 @@ namespace CLPS2C_Compiler
                         continue;
                     }
 
-                    AsmLines.Add(HandleAsm(Commands[i]));
+                    AsmLines.Add(HandleAsm(Commands[i], ListSets));
                     if (_error)
                     {
                         return OutputLines;
@@ -331,7 +332,7 @@ namespace CLPS2C_Compiler
                     break;
                 default:
                     SetError(ERROR.VALUE_INVALID, command);
-                    return "";
+                    break;
             }
             return "";
         }
@@ -1140,9 +1141,9 @@ namespace CLPS2C_Compiler
             return "";
         }
 
-        private static string HandleAsm(Command_t command)
+        private static string HandleAsm(Command_t command, List<LocalVar_t> listSets)
         {
-            // TO-DO: It would be better to handle this inside keystone itself
+            // TODO: It would be better to handle this inside keystone itself
             // The code will freeze in the Assemble() method if any of these happen:
             // When there's a '%' character before the opcode: "%li"
             // When there's a label that contains :: or %
@@ -1152,29 +1153,58 @@ namespace CLPS2C_Compiler
                 return "";
             }
 
-            string Output = ReplaceTRegisters(command.FullLine);
+            // Because set variables are supported for J and JAL opcodes, we need to create the output manually from command.Data
+            // For all other opcodes, we try to assemble command.FullLine
+            string OpCode = "";
+            string Output = "";
+            if (command.Type.EndsWith(':')) // if it's a label
+            {
+                OpCode = command.Data[0].ToUpper();
+            }
+            else
+            {
+                OpCode = command.Type;
+            }
+
+            if (OpCode != "J" && OpCode != "JAL")
+            {
+                Output = command.FullLine;
+            }
+            else
+            {
+                if (command.Type.EndsWith(':')) // if it's a label
+                {
+                    Output = command.FullLine.Substring(0, command.Type.Length);
+                }
+                else
+                {
+                    Output = command.Type;
+                }
+
+                Output += " " + string.Join(" ", command.Data);
+            }
+
+            Output = ReplaceTRegisters(Output);
             byte[] Array = _keystone.Assemble(Output, 0, out int _, out _);
 
-            // TO-DO: It would be better to handle this inside keystone itself
+            // TODO: It would be better to handle this inside keystone itself
             // With keystone set to MIPS64 mode, the output produced by having a 32-bit immediate value for some opcodes will not produce the same result as Mips32:
-            // For example, "lw $t0,0x12345678" should be assembled to "lui $t0,0x1234; lw $t0,0x5678($t0)", but it gets assembled to "lui $t4,0x1234; move $t4,$t4; lw $t4,0x5678($t4)"
-            // This adds an extra instruction in the middle, "move $t4,$t4" (psuedocode for "addu $t4,$t4,$zero").
-            if (Array != null && Array.Length == 0xC /*&& command.Data.Count == 2*/)
+            // For example, "lw $t0,0x12345678" should be assembled to "lui $t0,0x1234; lw $t0,0x5678($t0)", but it gets assembled to "lui $t0,0x1234; move $t0,$t0; lw $t0,0x5678($t0)"
+            // This adds an extra instruction in the middle, "move $t0,$t0" (psuedocode for "addu $t0,$t0,$zero").
+            if (Array != null && Array.Length == 0xC)
             {
-                string OpCode = "";
                 string Register = "";
                 string Value_1 = "";
                 string Value_2 = "";
+
                 // Handle a bit differently in case there's a label at the start
                 if (command.Type.EndsWith(':'))
                 {
-                    OpCode = command.Data[0].ToUpper();
                     Register = command.Data[1];
                     Value_1 = command.Data[2];
                 }
                 else
                 {
-                    OpCode = command.Type;
                     Register = command.Data[0];
                     Value_1 = command.Data[1];
                 }
@@ -1209,33 +1239,33 @@ namespace CLPS2C_Compiler
                 }
             }
 
-            KeystoneError KSErr = _keystone.GetLastKeystoneError();
-            if (KSErr != KeystoneError.KS_ERR_ASM_SYMBOL_MISSING)
+            KeystoneError KSError = _keystone.GetLastKeystoneError();
+            // Ignore the error if it's KS_ERR_ASM_SYMBOL_MISSING, we are not checking for symbols right now.
+            if (KSError != KeystoneError.KS_ERR_ASM_SYMBOL_MISSING)
             {
-                if (KSErr != KeystoneError.KS_ERR_OK) // wrong opcode; t1 instead of $t1
+                if (KSError != KeystoneError.KS_ERR_OK)
                 {
-                    SetError(KSErr, command);
+                    // wrong opcode; t1 instead of $t1
+                    SetError(KSError, command);
                     return "";
                 }
-                else
+                else if (Array.Length == 0)
                 {
-                    if (Array.Length == 0) // lw $t1,0xq
-                    {
-                        SetError(KeystoneError.KS_ERR_ASM_INVALIDOPERAND, command);
-                        return "";
-                    }
+                    // lw $t1,0xq
+                    SetError(KeystoneError.KS_ERR_ASM_INVALIDOPERAND, command);
+                    return "";
                 }
             }
 
             return Output;
         }
 
-        private static string HandleAsmEnd(Command_t command, List<string> asmLines, ref uint asmStartAddress, out int size)
+        private static string HandleAsmEnd(Command_t command, List<string> asmLines, List<LocalVar_t> listSets, ref uint asmStartAddress, out int size)
         {
-            // TO-DO: It would be better to handle this inside keystone itself
+            // TODO: It would be better to handle this inside keystone itself
             // By using the ResolveSymbol event, we can intercept keystone not finding a symbol.
-            // This way, we can be specific about which symbol is missing in the error output.
-            // But, adding the event like below will result in incorrect parsing of some instructions.
+            // This way we can be specific about which symbol is missing in the error output.
+            // But adding the event like below will result in an incorrect parsing of some instructions.
             // For example: "li $t1,100" will output 24090100, but the correct output should be 24090064
             // (the 100 is considered an hexadecimal number (0x100), but it should be decimal (100 = 0x64))
             // See issue #481 https://github.com/keystone-engine/keystone/issues/481
@@ -1248,15 +1278,30 @@ namespace CLPS2C_Compiler
             //     return false;
             // };
 
-            string Code = string.Join("; ", asmLines);
+            string Code = string.Join(";", asmLines);
             byte[] Array = _keystone.Assemble(Code, 0, out size, out _);
-            if (Array == null || Array.Length == 0) // no symbol found -> (b label) with "label" not being defined
+            KeystoneError KSError = _keystone.GetLastKeystoneError();
+            if (Array == null)
             {
-                SetError(_keystone.GetLastKeystoneError(), command);
+                // no symbol found -> (b label) with "label" not being defined
+                SetError(KSError, command);
                 return "";
             }
+            else if (Array.Length == 0)
+            {
+                // j or jal to a variable that is not defined
+                if (KSError == KeystoneError.KS_ERR_OK)
+                {
+                    SetError(KeystoneError.KS_ERR_ASM_SYMBOL_MISSING, command);
+                    return "";
+                }
 
+                // Some other error(?)
+                SetError(KSError, command);
+                return "";
+            }
             string Output = "";
+
             size = size / 4; // LinesCount
             for (int i = 0; i < size; i++)
             {
@@ -1443,7 +1488,7 @@ namespace CLPS2C_Compiler
                     {
                         if (IsVarDeclared(DelimList[k], FunctionArgsSets))
                         {
-                            List<string> ListValues = GetSetValueFromTarget(DelimList[k], FunctionCommands[i].ID, FunctionArgsSets);
+                            List<string> ListValues = GetSetValuesFromTarget(DelimList[k], FunctionCommands[i].ID, FunctionArgsSets);
                             Tmp = string.Concat(ListValues);
                             FunctionCommands[i].Data[1] = FunctionCommands[i].Data[1].Replace(DelimList[k], Tmp);
                         }
@@ -1473,8 +1518,6 @@ namespace CLPS2C_Compiler
             for (int i = StartIndex; i < commands.Count; i++)
             {
                 int WeightCount = GetWeightCountFromIfIndex(commands, i);
-                IfCommandsToAdd.Clear();
-                IfCommandsToAdd.Add(commands[i]);
                 if (WeightCount > 0xFF)
                 {
                     // If WeightCount is > 0xFF, we need to modify listCommands, so we run through all the commands and keep track of the CurrentWeight
@@ -1485,6 +1528,7 @@ namespace CLPS2C_Compiler
                     //    But if WeightCount is equal to 255, then we need to place the extra IF+ENDIF commands *before* this last If command
                     // If we encounter an ENDIF command, remove the last entry in the IfCommandsToAdd list
 
+                    IfCommandsToAdd.Add(commands[i]);
                     WeightCount = 0;
                     for (int j = i + 1; j < commands.Count; j++)
                     {
@@ -1519,6 +1563,8 @@ namespace CLPS2C_Compiler
                             IfCommandsToAdd.RemoveAt(IfCommandsToAdd.Count - 1);
                         }
                     }
+
+                    IfCommandsToAdd.Clear();
                 }
 
                 i = commands.FindIndex(i + 1, item => item.Type == "IF");
@@ -1801,46 +1847,60 @@ namespace CLPS2C_Compiler
             }
         }
 
+        private static Command_t ApplySetsToCommand(Command_t command, List<LocalVar_t> listSets)
+        {
+            for (int i = 0; i < command.Data.Count; i++)
+            {
+                string Target = command.Data[i];
+                if (Target.StartsWith('+') || Target.StartsWith(','))
+                {
+                    // "+off" = "off"
+                    Target = Target.Substring(1).TrimStart();
+                }
+
+                if (IsVarDeclared(Target, listSets))
+                {
+                    List<string> ListValues = GetSetValuesFromTarget(Target, command.ID, listSets);
+
+                    // Add + or , for the first element in the list of values
+                    // For example:
+                    //  Set test 8+4
+                    //  Write32 FB1580+off
+                    // "off" is going to be replaced with "8+4", but because it's the second term of a larger expression (FB1580+off), we add the + back
+                    if (command.Data[i].StartsWith('+') || command.Data[i].StartsWith(','))
+                    {
+                        // "8" = "+8"
+                        ListValues[0] = command.Data[i][0] + ListValues[0];
+                    }
+
+                    // Trim space after + or ,
+                    for (int j = 1; j < ListValues.Count; j++)
+                    {
+                        if (ListValues[j].StartsWith('+') || ListValues[j].StartsWith(','))
+                        {
+                            ListValues[j] = ListValues[j][0] + ListValues[j].Substring(1).TrimStart();
+                        }
+                    }
+
+                    command.Data.RemoveAt(i);
+                    command.Data.InsertRange(i, ListValues);
+                    i = i + ListValues.Count - 1;
+                }
+                else if (command.Data[i].StartsWith('+') || command.Data[i].StartsWith(','))
+                {
+                    command.Data[i] = command.Data[i][0] + Target;
+                }
+            }
+            return command;
+        }
+
         private static bool ApplySetsToCommands(List<Command_t> commands, List<LocalVar_t> listSets)
         {
             for (int i = 0; i < commands.Count; i++)
             {
-                for (int j = 0; j < commands[i].Data.Count; j++)
-                {
-                    string Target = commands[i].Data[j];
-                    if (Target.StartsWith('+') || Target.StartsWith(','))
-                    {
-                        Target = Target.Substring(1).TrimStart();
-                    }
+                commands[i] = ApplySetsToCommand(commands[i], listSets);
 
-                    if (IsVarDeclared(Target, listSets))
-                    {
-                        List<string> ListValues = GetSetValueFromTarget(Target, commands[i].ID, listSets);
-                        if (commands[i].Data[j].StartsWith('+') || commands[i].Data[j].StartsWith(','))
-                        {
-                            ListValues[0] = commands[i].Data[j][0] + ListValues[0];
-                        }
-
-                        for (int k = 1; k < ListValues.Count; k++)
-                        {
-                            if (ListValues[k].StartsWith('+') || ListValues[k].StartsWith(','))
-                            {
-                                ListValues[k] = ListValues[k][0] + ListValues[k].Substring(1).TrimStart();
-                            }
-                        }
-
-                        commands[i].Data.RemoveAt(j);
-                        commands[i].Data.InsertRange(j, ListValues);
-                        j = j + ListValues.Count - 1;
-                        continue;
-                    }
-
-                    if (commands[i].Data[j].StartsWith('+') || commands[i].Data[j].StartsWith(','))
-                    {
-                        commands[i].Data[j] = commands[i].Data[j][0] + Target;
-                    }
-                }
-
+                // Apply sets only for the J and JAL opcodes
                 if (commands[i].Type == "ASM_START")
                 {
                     int ASM_ENDIndex = commands.FindIndex(i, item => item.Type == "ASM_END");
@@ -1848,6 +1908,57 @@ namespace CLPS2C_Compiler
                     {
                         SetError(ERROR.MISS_ASM_END, commands[i]);
                         return false;
+                    }
+
+                    for (int j = i + 1; j < ASM_ENDIndex; j++)
+                    {
+                        string Label = "";
+                        string OpCode = "";
+
+                        // Handle a bit differently in case there's a label at the start
+                        if (commands[j].Type.EndsWith(':'))
+                        {
+                            Label = commands[j].Type;
+                            OpCode = commands[j].Data[0].ToUpper();
+                        }
+                        else
+                        {
+                            OpCode = commands[j].Type;
+                        }
+
+                        if (OpCode == "J" || OpCode == "JAL")
+                        {
+                            // Remove opcode if label is present, we'll add it back later
+                            if (Label != "")
+                            {
+                                commands[j].Data.RemoveAt(0);
+                            }
+                            commands[j] = ApplySetsToCommand(commands[j], listSets);
+
+                            // force values to be hexadecimal
+                            for (int k = 0; k < commands[j].Data.Count; k++)
+                            {
+                                string Target = commands[j].Data[k];
+                                if (Target.StartsWith("+"))
+                                {
+                                    if (!Target.StartsWith("+0x"))
+                                    {
+                                        // +ABC -> +0xABC
+                                        commands[j].Data[k] = "+0x" + Target.Substring(1);
+                                    }
+                                }
+                                else if (!Target.StartsWith("0x"))
+                                {
+                                    // 123 -> 0x123
+                                    commands[j].Data[k] = "0x" + Target;
+                                }
+                            }
+                            
+                            if (Label != "")
+                            {
+                                commands[j].Data.Insert(0, OpCode);
+                            }
+                        }
                     }
                     i = ASM_ENDIndex;
                 }
@@ -1903,7 +2014,6 @@ namespace CLPS2C_Compiler
 
         private static string GetAddress(Command_t command, ref int i)
         {
-            // ADDRESS
             if (!IsAddressValid(command.Data[i]))
             {
                 SetError(ERROR.ADDRESS_INVALID, command);
@@ -1930,7 +2040,6 @@ namespace CLPS2C_Compiler
 
         private static List<string> GetAddresses(Command_t command, ref int i)
         {
-            // ADDRESS
             List<string> ListOffs = new();
             if (!IsAddressValid(command.Data[i]))
             {
@@ -1971,7 +2080,6 @@ namespace CLPS2C_Compiler
 
         private static string GetIntValue(Command_t command, ref int i)
         {
-            // VALUE
             if (!IsIntValueValid(command.Data[i]))
             {
                 SetError(ERROR.VALUE_INVALID, command);
@@ -1998,7 +2106,6 @@ namespace CLPS2C_Compiler
 
         private static string GetFloatValue(Command_t command, ref int i)
         {
-            // VALUE
             if (!IsFloatValueValid(command.Data[i]))
             {
                 SetError(ERROR.VALUE_INVALID, command);
