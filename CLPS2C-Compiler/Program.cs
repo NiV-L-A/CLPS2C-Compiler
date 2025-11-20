@@ -1,8 +1,7 @@
-﻿using System.Text;
+﻿using CommandLine;
+using System.Text;
 using System.Text.RegularExpressions;
 using static CLPS2C_Compiler.Util;
-using Keystone;
-using CommandLine;
 
 namespace CLPS2C_Compiler
 {
@@ -23,24 +22,26 @@ namespace CLPS2C_Compiler
 
     internal class Program
     {
-        public static string _newLine = Environment.NewLine;
-        private static bool _error = false;
-        private static string _inputFilePath = "";
-        private static List<Function_t> _functionList = new(); // List to store the function definitions
-        private static Dictionary<string, string> _commandsDict = new(); // Dictionary for the commands that have abbreviations.
-        private static Encoding _currentEncoding = Encoding.UTF8;
-        private static Regex _ifRegex = new(@"If (\w+\s*(?:\+\s*-?(0x)?[0-9A-F]{1,8})*) ([=!<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-F]{1,8}|\+\s*-?(?!0x)\d+)*)(?: (&&) (\w+\s*(?:\+\s*-?(0x)?[0-9A-F]{1,8})*) ([!=<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-F]{1,8}|\+\s*-?(?!0x)\d+)*))*$", RegexOptions.IgnoreCase);
-        private static Engine _keystone = new(Keystone.Architecture.MIPS, Mode.MIPS64) { ThrowOnError = false };
-        private static ErrorInfo_t _errorInfo = new();
-        private static ParserResult<ConsoleParserOptions>? _consoleParser;
+        public static string newLine = Environment.NewLine;
+        public static bool error = false;
+        public static List<LocalVar_t> listSets = new();
+
+        static string _inputFilePath = "";
+        static List<Function_t> _functionList = new(); // List to store the function definitions
+        static Dictionary<string, string> _commandsDict = new(); // Dictionary for the commands that have abbreviations.
+        static Encoding _currentEncoding = Encoding.UTF8;
+        static Regex _ifRegex = new(@"If (\w+\s*(?:\+\s*-?(0x)?[0-9A-F]{1,8})*) ([=!<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-F]{1,8}|\+\s*-?(?!0x)\d+)*)(?: (&&) (\w+\s*(?:\+\s*-?(0x)?[0-9A-F]{1,8})*) ([!=<>&|]|~[&|])([:.]) (\w+\s*(?:\+\s*-?(0x){1}[0-9A-F]{1,8}|\+\s*-?(?!0x)\d+)*))*$", RegexOptions.IgnoreCase);
+        static EEAssembler _ee;
+        static ErrorInfo_t _errorInfo = new();
+        static ParserResult<ConsoleParserOptions>? _consoleParser;
 
         // 1) Arg1: FilePath.                   Output in same folder, with the same file name + "-Output.txt"
         // 2) Arg1: FilePath.   Arg2: FilePath. Output to Arg2
         static void Main(string[] args)
         {
-            bool PrintElapsedTimer = false;
+            bool EnableElapsedTimer = false;
             System.Diagnostics.Stopwatch stopWatch = new();
-            if (PrintElapsedTimer)
+            if (EnableElapsedTimer)
             {
                 stopWatch.Start();
             }
@@ -80,18 +81,16 @@ namespace CLPS2C_Compiler
             List<string> Lines = File.ReadAllLines(_inputFilePath, Encoding.UTF8).ToList();
             PopulateAbbreviationDict();
             List<string> OutputLines = ParseLines(Lines);
-            // Dispose keystone, we don't need it anymore
-            _keystone.Dispose();
 
             // Output
             string Output = "";
-            if (_error)
+            if (error)
             {
                 Output = PrintError(_errorInfo);
             }
             else if (OutputLines.Count != 0)
             {
-                if (OutputLines[0].StartsWith(_newLine))
+                if (OutputLines[0].StartsWith(newLine))
                 {
                     OutputLines[0] = OutputLines[0].Substring(2);
                 }
@@ -104,20 +103,18 @@ namespace CLPS2C_Compiler
                 }
             }
 
-            if (PrintElapsedTimer)
+            if (EnableElapsedTimer)
             {
                 stopWatch.Stop();
                 TimeSpan ts = stopWatch.Elapsed;
-                Output = $"Elapsed time: {ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds}{_newLine}{Output}";
+                Output = $"Elapsed time: {ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds}{newLine}{Output}";
             }
             File.WriteAllText(_consoleParser.Value.OutputFilePath, Output);
         }
 
-        private static List<string> ParseLines(List<string> lines)
+        static List<string> ParseLines(List<string> lines)
         {
             List<Command_t> Commands = new();
-            List<LocalVar_t> ListSets = new();
-            List<string> AsmLines = new(); // Lines in assembly region
             List<string> OutputLines = new();
             bool InAsmScope = false; // If in assembly region. Can be changed with the ASM_START and ASM_END commands
             uint AsmStartAddress = 0; // (ADDRESS) argument for the ASM_START command
@@ -131,13 +128,13 @@ namespace CLPS2C_Compiler
             }
 
             ReplaceInclude(Commands);
-            if (_error)
+            if (error)
             {
                 return OutputLines;
             }
 
             GetFunctionList(Commands);
-            if (_error)
+            if (error)
             {
                 return OutputLines;
             }
@@ -146,23 +143,21 @@ namespace CLPS2C_Compiler
             Commands = Commands.Select((item, Index) => { item.ID = Index; return item; }).ToList();
 
             ReplaceCall(ref Commands);
-            if (_error)
+            if (error)
             {
                 return OutputLines;
             }
 
-            ListSets = GetListSets(Commands);
-            if (_error)
+            GetListSets(Commands);
+            if (error)
             {
                 return OutputLines;
             }
 
             // Remove "SET" commands
             Commands = Commands.Where(item => item.Type != "SET").ToList();
-            if (!ApplySetsToCommands(Commands, ListSets))
-            {
-                return OutputLines;
-            }
+            ApplySetsToCommands(Commands, listSets);
+            List<Command_t> AsmLines = new();
 
             for (int i = 0; i < Commands.Count; i++)
             {
@@ -171,38 +166,38 @@ namespace CLPS2C_Compiler
                     if (Commands[i].Type == "ASM_END")
                     {
                         InAsmScope = false;
-                        if (AsmLines.Count != 0)
+                        Commands[i].Output = HandleAsmEnd(Commands[i], AsmLines, ref AsmStartAddress, out Commands[i].Weight);
+                        if (error)
                         {
-                            Commands[i].Output = HandleAsmEnd(Commands[i], AsmLines, ListSets, ref AsmStartAddress, out Commands[i].Weight);
-                            if (_error)
-                            {
-                                return OutputLines;
-                            }
-                            AsmLines.Clear();
-                            AsmStartAddress = 0;
+                            return OutputLines;
                         }
+
+                        AsmLines.Clear();
+                        AsmStartAddress = 0;
                         continue;
                     }
 
-                    AsmLines.Add(HandleAsm(Commands[i], ListSets));
-                    if (_error)
-                    {
-                        return OutputLines;
-                    }
+                    AsmLines.Add(Commands[i]);
                     continue;
                 }
 
                 Commands[i].Output = HandleCommand(Commands[i], out AsmStartAddress, out InAsmScope);
-                if (_error)
+                if (error)
                 {
                     return OutputLines;
                 }
             }
 
+            if (InAsmScope)
+            {
+                SetError(ERROR.MISS_ASM_END, Commands.Last());
+                return OutputLines;
+            }
+
             if (Commands.Any(item => item.Type == "IF"))
             {
                 CorrectIf(Commands);
-                if (_error)
+                if (error)
                 {
                     // Miss endif
                     return OutputLines;
@@ -213,7 +208,7 @@ namespace CLPS2C_Compiler
             return OutputLines;
         }
 
-        private static string HandleCommand(Command_t command, out uint asmStartAddress, out bool inAsmScope)
+        static string HandleCommand(Command_t command, out uint asmStartAddress, out bool inAsmScope)
         {
             string Output = "";
             inAsmScope = false;
@@ -224,6 +219,7 @@ namespace CLPS2C_Compiler
             {
                 command.Type = value;
             }
+
             switch (command.Type)
             {
                 case "SETENCODING":
@@ -289,7 +285,7 @@ namespace CLPS2C_Compiler
                 case "ENDIF":
                     break;
                 case "ASM_START":
-                    Output = HandleAsmStart(command, out asmStartAddress);
+                    asmStartAddress = HandleAsmStart(command);
                     inAsmScope = true;
                     break;
                 case "ASM_END":
@@ -302,7 +298,7 @@ namespace CLPS2C_Compiler
             return Output;
         }
 
-        private static LocalVar_t HandleSet(Command_t command)
+        static LocalVar_t HandleSet(Command_t command)
         {
             if (command.WordCount < 3)
             {
@@ -313,7 +309,7 @@ namespace CLPS2C_Compiler
             return new LocalVar_t(command.Data[0], command.Data.Skip(1).ToList());
         }
 
-        private static string HandleSetEncoding(Command_t command)
+        static string HandleSetEncoding(Command_t command)
         {
             if (command.WordCount != 2)
             {
@@ -337,7 +333,7 @@ namespace CLPS2C_Compiler
             return "";
         }
 
-        private static string HandleSendRaw(Command_t command)
+        static string HandleSendRaw(Command_t command)
         {
             if (command.WordCount < 2)
             {
@@ -347,7 +343,7 @@ namespace CLPS2C_Compiler
 
             int i = 0;
             string Value = GetStringValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -357,20 +353,20 @@ namespace CLPS2C_Compiler
                 return "";
             }
 
-            Value = Value.Replace("\\n", _newLine)
+            Value = Value.Replace("\\n", newLine)
                          .Replace("\\t", "\t")
                          .Replace("\\\"", "\"");
             return Value;
         }
 
-        private static string HandleSendRawWeight(Command_t command)
+        static string HandleSendRawWeight(Command_t command)
         {
             string Value = HandleSendRaw(command);
             command.Weight = 1 + CountCharInRange(Value, '\n', 0, Value.Length);
-            return $"{_newLine}{Value}";
+            return $"{newLine}{Value}";
         }
 
-        private static string HandleWriteX(Command_t command)
+        static string HandleWriteX(Command_t command)
         {
             // W8:   0aaaaaaa 000000vv
             // W16:  1aaaaaaa 0000vvvv
@@ -384,7 +380,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -396,7 +392,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -422,10 +418,10 @@ namespace CLPS2C_Compiler
             }
 
             command.Weight = 1;
-            return $"{_newLine}{Address} {Value}";
+            return $"{newLine}{Address} {Value}";
         }
 
-        private static string HandleWriteFloat(Command_t command)
+        static string HandleWriteFloat(Command_t command)
         {
             //WF:   2aaaaaaa vvvvvvvv
             if (command.WordCount < 3)
@@ -437,7 +433,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -449,7 +445,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetFloatValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -460,10 +456,10 @@ namespace CLPS2C_Compiler
             }
 
             command.Weight = 1;
-            return $"{_newLine}2{Address} {Value}";
+            return $"{newLine}2{Address} {Value}";
         }
 
-        private static string HandleWriteString(Command_t command)
+        static string HandleWriteString(Command_t command)
         {
             // WS 20E71C00 "park"
             // 20E71C00 6B726170
@@ -476,7 +472,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -488,7 +484,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetStringValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -508,7 +504,7 @@ namespace CLPS2C_Compiler
             return Output;
         }
 
-        private static string HandleWriteBytes(Command_t command)
+        static string HandleWriteBytes(Command_t command)
         {
             // WB 20E71C00 "00 11 22 33"
             // 20E71C00 33221100
@@ -521,7 +517,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -533,7 +529,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetStringValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -556,7 +552,7 @@ namespace CLPS2C_Compiler
             return Output;
         }
 
-        private static string HandleWritePointerX(Command_t command)
+        static string HandleWritePointerX(Command_t command)
         {
             // WPX ADDRESS,OFFSET[,OFFSET2...] VALUE
             // WP8:  6aaaaaaa 000000vv
@@ -577,7 +573,7 @@ namespace CLPS2C_Compiler
             // ADDRESSES
             int i = 0;
             List<string> ListOffs = GetAddresses(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -589,7 +585,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -609,22 +605,22 @@ namespace CLPS2C_Compiler
             switch (command.Type)
             {
                 case "WRITEPOINTER8":
-                    Output = $"6{ListOffs[0]} 000000{Value.Substring(6, 2)}{_newLine}0000{OffsCount} {ListOffs[1]}";
+                    Output = $"6{ListOffs[0]} 000000{Value.Substring(6, 2)}{newLine}0000{OffsCount} {ListOffs[1]}";
                     break;
                 case "WRITEPOINTER16":
-                    Output = $"6{ListOffs[0]} 0000{Value.Substring(4, 4)}{_newLine}0001{OffsCount} {ListOffs[1]}";
+                    Output = $"6{ListOffs[0]} 0000{Value.Substring(4, 4)}{newLine}0001{OffsCount} {ListOffs[1]}";
                     break;
                 case "WRITEPOINTER32":
-                    Output = $"6{ListOffs[0]} {Value}{_newLine}0002{OffsCount} {ListOffs[1]}";
+                    Output = $"6{ListOffs[0]} {Value}{newLine}0002{OffsCount} {ListOffs[1]}";
                     break;
             }
 
             Output += GetRemainingOffsets(ListOffs, out int weight);
             command.Weight = 2 + weight;
-            return $"{_newLine}{Output}";
+            return $"{newLine}{Output}";
         }
 
-        private static string HandleWritePointerFloat(Command_t command)
+        static string HandleWritePointerFloat(Command_t command)
         {
             // WPF ADDRESS,OFFSET[,OFFSET2...] VALUE
             // WPF:  6aaaaaaa vvvvvvvv
@@ -640,7 +636,7 @@ namespace CLPS2C_Compiler
             // ADDRESSES
             int i = 0;
             List<string> ListOffs = GetAddresses(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -652,7 +648,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetFloatValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -668,14 +664,14 @@ namespace CLPS2C_Compiler
                 SetError(ERROR.WRONG_SYNTAX, command);
                 return "";
             }
-            string Output = $"6{ListOffs[0]} {Value}{_newLine}0002{OffsCount} {ListOffs[1]}";
+            string Output = $"6{ListOffs[0]} {Value}{newLine}0002{OffsCount} {ListOffs[1]}";
 
-            Output += GetRemainingOffsets(ListOffs, out int Weight);
-            command.Weight = 2 + Weight;
-            return $"{_newLine}{Output}";
+            Output += GetRemainingOffsets(ListOffs, out int weight);
+            command.Weight = 2 + weight;
+            return $"{newLine}{Output}";
         }
 
-        private static string HandleCopyBytes(Command_t command)
+        static string HandleCopyBytes(Command_t command)
         {
             // CB 20E71C00 20E71C04 4
             // 5sssssss nnnnnnnn
@@ -689,7 +685,7 @@ namespace CLPS2C_Compiler
             // SOURCE ADDRESS
             int i = 0;
             string SourceAddress = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -701,7 +697,7 @@ namespace CLPS2C_Compiler
 
             // DESTINATION ADDRESS
             string DestinationAddress = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -713,7 +709,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string LengthValue = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -729,10 +725,10 @@ namespace CLPS2C_Compiler
             }
 
             command.Weight = 2;
-            return $"{_newLine}5{SourceAddress} {LengthValue}{_newLine}0{DestinationAddress} 00000000";
+            return $"{newLine}5{SourceAddress} {LengthValue}{newLine}0{DestinationAddress} 00000000";
         }
 
-        private static string HandleFillX(Command_t command)
+        static string HandleFillX(Command_t command)
         {
             // FillX 000F0000 0xDEADBEEF 0x10
             // 8aaaaaaa nnnnssss
@@ -752,7 +748,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -764,7 +760,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -776,7 +772,7 @@ namespace CLPS2C_Compiler
 
             // LENGTH
             string Length = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -803,34 +799,47 @@ namespace CLPS2C_Compiler
                         SetError(ERROR.VALUE_INVALID, command);
                         return "";
                     }
+
                     Length = Tmp.ToString("X8").Substring(4);
                     break;
                 case "FILL16":
                     Address = $"8{Address}";
                     Value = $"1000{Value.Substring(4, 4)}";
-                    if (Tmp % 2 != 0 || Tmp > 0x1FFFE)
+                    if (Tmp % 2 != 0)
+                    {
+                        SetError(ERROR.LENGTH_MUST_BE_DIVISIBLE_BY_2, command);
+                        return "";
+                    }
+                    else if (Tmp > 0x1FFFE)
                     {
                         SetError(ERROR.VALUE_INVALID, command);
                         return "";
                     }
+
                     Length = (Tmp / 2).ToString("X4");
                     break;
                 case "FILL32":
                     Address = $"4{Address}";
-                    if (Tmp % 4 != 0 || Tmp > 0x3FFFC)
+                    if (Tmp % 4 != 0)
+                    {
+                        SetError(ERROR.LENGTH_MUST_BE_DIVISIBLE_BY_4, command);
+                        return "";
+                    }
+                    else if (Tmp > 0x3FFFC)
                     {
                         SetError(ERROR.VALUE_INVALID, command);
                         return "";
                     }
+
                     Length = (Tmp / 4).ToString("X4");
                     break;
             }
             
             command.Weight = 2;
-            return $"{_newLine}{Address} {Length}0001{_newLine}{Value} 00000000";
+            return $"{newLine}{Address} {Length}0001{newLine}{Value} 00000000";
         }
 
-        private static string HandleIncX(Command_t command)
+        static string HandleIncX(Command_t command)
         {
             // I8:   300000vv 0aaaaaaa
             // I16:  3020vvvv 0aaaaaaa
@@ -845,7 +854,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -857,7 +866,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -879,15 +888,15 @@ namespace CLPS2C_Compiler
                     command.Weight = 1;
                     break;
                 case "INCREMENT32":
-                    Output = $"30400000 0{Address}{_newLine}{Value} 00000000";
+                    Output = $"30400000 0{Address}{newLine}{Value} 00000000";
                     command.Weight = 2;
                     break;
             }
 
-            return $"{_newLine}{Output}";
+            return $"{newLine}{Output}";
         }
 
-        private static string HandleDecX(Command_t command)
+        static string HandleDecX(Command_t command)
         {
             // D8:   301000vv 0aaaaaaa
             // D16:  3030vvvv 0aaaaaaa
@@ -902,7 +911,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -914,7 +923,7 @@ namespace CLPS2C_Compiler
 
             // VALUE
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -936,15 +945,15 @@ namespace CLPS2C_Compiler
                     command.Weight = 1;
                     break;
                 case "DECREMENT32":
-                    Output = $"30500000 0{Address}{_newLine}{Value} 00000000";
+                    Output = $"30500000 0{Address}{newLine}{Value} 00000000";
                     command.Weight = 2;
                     break;
             }
 
-            return $"{_newLine}{Output}";
+            return $"{newLine}{Output}";
         }
 
-        private static string HandleBoolX(Command_t command)
+        static string HandleBoolX(Command_t command)
         {
             //           7aaaaaaa 00t0vvvv
             // OR8:      7aaaaaaa 000000vv
@@ -962,7 +971,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -974,7 +983,7 @@ namespace CLPS2C_Compiler
             
             // VALUE
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -1014,10 +1023,10 @@ namespace CLPS2C_Compiler
             }
             
             command.Weight = 1;
-            return $"{_newLine}7{Address} 00{Type}0{Value}";
+            return $"{newLine}7{Address} 00{Type}0{Value}";
         }
 
-        private static string HandleIf(Command_t command)
+        static string HandleIf(Command_t command)
         {
             // E1nn00vv taaaaaaa | Daaaaaaa nnt100vv
             // E0nnvvvv taaaaaaa | Daaaaaaa nnt0vvvv
@@ -1042,7 +1051,7 @@ namespace CLPS2C_Compiler
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -1060,7 +1069,7 @@ namespace CLPS2C_Compiler
             // VALUE
             i++;
             string Value = GetIntValue(command, ref i);
-            if (_error)
+            if (error)
             {
                 return "";
             }
@@ -1110,207 +1119,70 @@ namespace CLPS2C_Compiler
             command.Weight = 1;
             if (_consoleParser!.Value.UseDTypeCode)
             {
-                return $"{_newLine}D{Address} nn{Condition}{Type}{Value}";
+                return $"{newLine}D{Address} nn{Condition}{Type}{Value}";
             }
-            return $"{_newLine}E{Type}nn{Value} {Condition}{Address}";
+
+            return $"{newLine}E{Type}nn{Value} {Condition}{Address}";
         }
 
-        private static string HandleAsmStart(Command_t command, out uint asmStartAddress)
+        static uint HandleAsmStart(Command_t command)
         {
-            asmStartAddress = 0;
+            uint asmStartAddress = 0;
             if (command.WordCount < 2)
             {
                 SetError(ERROR.WRONG_SYNTAX, command);
-                return "";
+                return asmStartAddress;
             }
 
             // ADDRESS
             int i = 0;
             string Address = GetAddress(command, ref i);
-            if (_error)
+            if (error)
             {
-                return "";
+                return asmStartAddress;
             }
             if (i < command.Data.Count)
             {
                 SetError(ERROR.WRONG_SYNTAX, command);
-                return "";
+                return asmStartAddress;
             }
 
             asmStartAddress = Convert.ToUInt32($"2{Address}", 16);
-            return "";
+            return asmStartAddress;
         }
 
-        private static string HandleAsm(Command_t command, List<LocalVar_t> listSets)
+        static string HandleAsmEnd(Command_t command, List<Command_t> asmLines, ref uint asmStartAddress, out int instructionsCount)
         {
-            // TODO: It would be better to handle this inside keystone itself
-            // The code will freeze in the Assemble() method if any of these happen:
-            // When there's a '%' character before the opcode: "%li"
-            // When there's a label that contains :: or %
-            if (command.Type.Contains("::") || command.Type.Contains('%'))
+            if (command.Data.Count != 0)
             {
-                SetError(KeystoneError.KS_ERR_ASM_MNEMONICFAIL, command);
+                SetError(ERROR.WRONG_SYNTAX, command);
+                instructionsCount = 0;
                 return "";
             }
 
-            // Because set variables are supported for J and JAL opcodes, we need to create the output manually from command.Data
-            // For all other opcodes, we try to assemble command.FullLine
-            string OpCode = "";
             string Output = "";
-            if (command.Type.EndsWith(':')) // if it's a label
+            if (_ee == null)
             {
-                OpCode = command.Data[0].ToUpper();
-            }
-            else
-            {
-                OpCode = command.Type;
+                // Only create the instance when it's needed
+                _ee = new();
             }
 
-            if (OpCode != "J" && OpCode != "JAL")
+            byte[] bytes = _ee.Assemble(asmLines);
+            instructionsCount = bytes.Length / 4;
+            if (error)
             {
-                Output = command.FullLine;
-            }
-            else
-            {
-                if (command.Type.EndsWith(':')) // if it's a label
-                {
-                    Output = command.FullLine.Substring(0, command.Type.Length);
-                }
-                else
-                {
-                    Output = command.Type;
-                }
-
-                Output += " " + string.Join(" ", command.Data);
+                return "";
             }
 
-            Output = ReplaceTRegisters(Output);
-            byte[] Array = _keystone.Assemble(Output, 0, out int _, out _);
-
-            // TODO: It would be better to handle this inside keystone itself
-            // With keystone set to MIPS64 mode, the output produced by having a 32-bit immediate value for some opcodes will not produce the same result as Mips32:
-            // For example, "lw $t0,0x12345678" should be assembled to "lui $t0,0x1234; lw $t0,0x5678($t0)", but it gets assembled to "lui $t0,0x1234; move $t0,$t0; lw $t0,0x5678($t0)"
-            // This adds an extra instruction in the middle, "move $t0,$t0" (psuedocode for "addu $t0,$t0,$zero").
-            if (Array != null && Array.Length == 0xC)
+            for (int i = 0; i < instructionsCount; i++)
             {
-                string Register = "";
-                string Value_1 = "";
-                string Value_2 = "";
-
-                // Handle a bit differently in case there's a label at the start
-                if (command.Type.EndsWith(':'))
-                {
-                    Register = command.Data[1];
-                    Value_1 = command.Data[2];
-                }
-                else
-                {
-                    Register = command.Data[0];
-                    Value_1 = command.Data[1];
-                }
-
-                if (OpCode == "LB" || OpCode == "LH" || OpCode == "LW" || OpCode == "LD" ||
-                    OpCode == "SB" || OpCode == "SH" || OpCode == "SW" || OpCode == "SD" ||
-                    OpCode == "LBU" || OpCode == "LHU" || OpCode == "LWU")
-                {
-                    Value_1 = Value_1.TrimStart(',');
-                    Value_1 = Value_1.Trim(); // "lw $t1, 0x2DE2F0"
-                    uint Tmp = Convert.ToUInt32(Value_1, 16);
-                    Value_2 = (Tmp & 0xFFFF).ToString("X4");
-                    Value_1 = ((Tmp >> 16) & 0xFFFF).ToString("X4");
-                    Register = ReplaceTRegisters(Register);
-
-                    if (Value_2[0] >= '8' && Value_2[0] <= 'F')
-                    {
-                        Value_1 = (Convert.ToUInt32(Value_1, 16) + 1).ToString("X4");
-                        Value_2 = $"-0x{(0x10000 - Convert.ToUInt32(Value_2, 16)).ToString("X4")}";
-                    }
-
-                    if (!Value_2.StartsWith("-"))
-                    {
-                        Value_2 = $"0x{Value_2}";
-                    }
-
-                    Output = $"lui {Register},0x{Value_1}; {OpCode} {Register},{Value_2}({Register})";
-                    if (command.Type.EndsWith(':'))
-                    {
-                        Output = $"{command.FullLine.Substring(0, command.FullLine.IndexOf(':'))}: {Output}";
-                    }
-                }
-            }
-
-            KeystoneError KSError = _keystone.GetLastKeystoneError();
-            // Ignore the error if it's KS_ERR_ASM_SYMBOL_MISSING, we are not checking for symbols right now.
-            if (KSError != KeystoneError.KS_ERR_ASM_SYMBOL_MISSING)
-            {
-                if (KSError != KeystoneError.KS_ERR_OK)
-                {
-                    // wrong opcode; t1 instead of $t1
-                    SetError(KSError, command);
-                    return "";
-                }
-                else if (Array.Length == 0)
-                {
-                    // lw $t1,0xq
-                    SetError(KeystoneError.KS_ERR_ASM_INVALIDOPERAND, command);
-                    return "";
-                }
+                Output += $"{newLine}{asmStartAddress + i * 4:X8} {BitConverter.ToUInt32(bytes, i * 4):X8}";
             }
 
             return Output;
         }
-
-        private static string HandleAsmEnd(Command_t command, List<string> asmLines, List<LocalVar_t> listSets, ref uint asmStartAddress, out int size)
-        {
-            // TODO: It would be better to handle this inside keystone itself
-            // By using the ResolveSymbol event, we can intercept keystone not finding a symbol.
-            // This way we can be specific about which symbol is missing in the error output.
-            // But adding the event like below will result in an incorrect parsing of some instructions.
-            // For example: "li $t1,100" will output 24090100, but the correct output should be 24090064
-            // (the 100 is considered an hexadecimal number (0x100), but it should be decimal (100 = 0x64))
-            // See issue #481 https://github.com/keystone-engine/keystone/issues/481
-            // See issue #436 https://github.com/keystone-engine/keystone/issues/436
-            // See issue #538 https://github.com/keystone-engine/keystone/issues/538
-            // string KeystoneErrorSymbol = "";
-            // _keystone.ResolveSymbol += (string s, ref ulong w) =>
-            // {
-            //     KeystoneErrorSymbol = s;
-            //     return false;
-            // };
-
-            string Code = string.Join(";", asmLines);
-            byte[] Array = _keystone.Assemble(Code, 0, out size, out _);
-            KeystoneError KSError = _keystone.GetLastKeystoneError();
-            if (Array == null)
-            {
-                // no symbol found -> (b label) with "label" not being defined
-                SetError(KSError, command);
-                return "";
-            }
-            else if (Array.Length == 0)
-            {
-                // j or jal to a variable that is not defined
-                if (KSError == KeystoneError.KS_ERR_OK)
-                {
-                    SetError(KeystoneError.KS_ERR_ASM_SYMBOL_MISSING, command);
-                    return "";
-                }
-
-                // Some other error(?)
-                SetError(KSError, command);
-                return "";
-            }
-            string Output = "";
-
-            size = size / 4; // LinesCount
-            for (int i = 0; i < size; i++)
-            {
-                Output += $"{_newLine}{(asmStartAddress + i * 4).ToString("X8")} {BitConverter.ToUInt32(Array, i * 4).ToString("X8")}";
-            }
-            return Output;
-        }
-
-        private static List<Command_t> HandleInclude(Command_t command)
+    
+        static List<Command_t> HandleInclude(Command_t command)
         {
             // 1) Absolute path: "C:\Users\admin\Desktop\CLPS2C\IncludeExample\Sly2\NTSC\Engine.txt"
             // 2) Relative path to the input file path (same folder as the input file): "Engine.txt"
@@ -1321,7 +1193,7 @@ namespace CLPS2C_Compiler
             if (command.WordCount != 2)
             {
                 SetError(ERROR.WRONG_SYNTAX, command);
-                return new List<Command_t>();
+                return [];
             }
 
             string FilePath = command.Data[0];
@@ -1329,8 +1201,8 @@ namespace CLPS2C_Compiler
             // VALUE
             if (!StartsAndEndsWithQuotes(FilePath))
             {
-                SetError(ERROR.WRONG_SYNTAX, command);
-                return new List<Command_t>();
+                SetError(ERROR.MISSING_QUOTES, command);
+                return [];
             }
             FilePath = GetSubstringInQuotes(FilePath, false);
 
@@ -1354,23 +1226,83 @@ namespace CLPS2C_Compiler
             {
                 // overflow
                 SetError(ERROR.INCLUDE_STACK_OVERFLOW, command);
-                return new List<Command_t>();
+                return [];
             }
 
             if (!IsFilePathValid(FilePath))
             {
                 // Folder or invalid file
                 SetError(ERROR.VALUE_INVALID, command);
-                return new List<Command_t>();
+                return [];
             }
 
-            List<string> Contents = File.ReadAllLines(FilePath).ToList();
-            Contents = TextCleanUp(Contents);
-            List<Command_t> ListCommands = GetListCommands(Contents, FilePath);
-            return ListCommands;
+            List<string> lines = File.ReadAllLines(FilePath).ToList();
+            lines = TextCleanUp(lines);
+            List<Command_t> IncludeCommands = GetListCommands(lines, FilePath);
+
+            if (Path.GetExtension(FilePath) == ".sym")
+            {
+                // Parse symbol file. We create SET commands for labels and functions, and skip global definitions.
+                // There are 3 types of definitions in a symbol file:
+                // Label
+                // [address] [name]
+                // [address] Always hex without 0x prefix and can be up to 8 digits
+                // [name] is a string and it's max 255 chars long
+
+                // Function
+                // [address] [name],[size]
+                // [address] Always hex without 0x prefix and can be up to 8 digits
+                // [name] is a string and it's max 255 chars long
+                // [size] Always hex without 0x prefix and can be up to 8 digits
+
+                // Data directive/Global variable
+                // [address] .[type]:[size]
+                // [address] Always hex without 0x prefix and can be up to 8 digits
+                // [type] possible values: "byt", "wrd", "dbl", "asc"
+                // [size] Always hex without 0x prefix and can be up to 8 digits
+
+                // In a symbol file we don't exit the program if there's an error, we just skip the line
+
+                for (int i = 0; i < IncludeCommands.Count; i++)
+                {
+                    // skip if wrong syntax or it's a data directive
+                    if (IncludeCommands[i].Data.Count == 0 || IncludeCommands[i].Data[0].StartsWith("."))
+                    {
+                        IncludeCommands.RemoveAt(i);
+                        i--;
+                        continue;
+                    }
+
+                    string address = IncludeCommands[i].Type;
+
+                    // skip invalid address
+                    if (!IsAddressValid(address))
+                    {
+                        IncludeCommands.RemoveAt(i);
+                        i--;
+                        continue;
+                    }
+
+                    // LABEL or FUNCTION
+                    // Change type to SET
+                    // 1st element of Data is [name], 2nd element is [address]; remove the rest of Data
+                    IncludeCommands[i].Type = "SET";
+                    if (IncludeCommands[i].Data.Count == 1)
+                    {
+                        IncludeCommands[i].Data.Add(address);
+                    }
+                    else
+                    {
+                        IncludeCommands[i].Data[1] = address;
+                        IncludeCommands[i].Data.RemoveRange(2, IncludeCommands[i].Data.Count - 2);
+                    }
+                }
+            }
+
+            return IncludeCommands;
         }
 
-        private static void HandleFunction(Command_t command)
+        static void HandleFunction(Command_t command)
         {
             if (command.WordCount == 1)
             {
@@ -1398,14 +1330,13 @@ namespace CLPS2C_Compiler
             return;
         }
 
-        private static List<Command_t> HandleCall(Command_t command)
+        static List<Command_t> HandleCall(Command_t command)
         {
-            Match Match = Regex.Match(command.FullLine, @"Call (\w+)(\(.*\))");
-
+            Match Match = Regex.Match(command.FullLine, @"Call (\w+)(\(.*\))", RegexOptions.IgnoreCase);
             if (!Match.Success)
             {
                 SetError(ERROR.WRONG_SYNTAX, command);
-                return new List<Command_t>();
+                return [];
             }
 
             // Get the matching function
@@ -1415,13 +1346,13 @@ namespace CLPS2C_Compiler
             if (TargetFunction == null)
             {
                 SetError(ERROR.VALUE_INVALID, command);
-                return new List<Command_t>();
+                return [];
             }
 
             List<string> CallArgs = GetCallArgsFromCommand(command);
-            if (_error)
+            if (error)
             {
-                return new List<Command_t>();
+                return [];
             }
 
             if (CallArgs.Count == 1 && CallArgs[0] == "")
@@ -1433,7 +1364,7 @@ namespace CLPS2C_Compiler
             if (TargetFunction.Args!.Count != CallArgs.Count)
             {
                 SetError(ERROR.ARGUMENT_COUNT_MISMATCH, command);
-                return new List<Command_t>();
+                return [];
             }
 
             // Populate FunctionArgsSets with the args passed
@@ -1458,12 +1389,9 @@ namespace CLPS2C_Compiler
                 return FunctionCommands;
             }
 
-            // Replace the arguments in each FunctionCommands only with FunctionArgsSets
-            if (!ApplySetsToCommands(FunctionCommands, FunctionArgsSets))
-            {
-                // error
-                return new List<Command_t>();
-            }
+            // Replace the arguments in each FunctionCommands
+            // ONLY WITH FunctionArgsSets
+            ApplySetsToCommands(FunctionCommands, FunctionArgsSets);
 
             // Handle a Call command differently
             for (int i = 0; i < FunctionCommands.Count; i++)
@@ -1474,9 +1402,9 @@ namespace CLPS2C_Compiler
                 }
 
                 List<string> CallInCallArgs = GetCallArgsFromCommand(FunctionCommands[i]);
-                if (_error)
+                if (error)
                 {
-                    return new List<Command_t>();
+                    return [];
                 }
 
                 for (int j = 0; j < CallInCallArgs.Count; j++)
@@ -1498,11 +1426,11 @@ namespace CLPS2C_Compiler
             return FunctionCommands;
         }
 
-        private static void CorrectIf(List<Command_t> commands)
+        static void CorrectIf(List<Command_t> commands)
         {
             // Check if there's an If command without its EndIf
             CheckForMissEndIf(commands);
-            if (_error)
+            if (error)
             {
                 return;
             }
@@ -1591,7 +1519,7 @@ namespace CLPS2C_Compiler
             }
         }
 
-        private static void CheckForMissEndIf(List<Command_t> commands)
+        static void CheckForMissEndIf(List<Command_t> commands)
         {
             var IfIndex = commands.FindIndex(item => item.Type == "IF");
             while (IfIndex != -1)
@@ -1630,7 +1558,7 @@ namespace CLPS2C_Compiler
             }
         }
 
-        private static void ConvertIfCommandsWithLogicalAnd(ref List<Command_t> commands)
+        static void ConvertIfCommandsWithLogicalAnd(ref List<Command_t> commands)
         {
             var IfIndex = commands.FindIndex(item => item.Type == "IF" && item.FullLine.Contains("&&"));
 
@@ -1684,7 +1612,7 @@ namespace CLPS2C_Compiler
             }
         }
 
-        private static int GetWeightCountFromIfIndex(List<Command_t> commands, int ifIndex)
+        static int GetWeightCountFromIfIndex(List<Command_t> commands, int ifIndex)
         {
             // Get the WeightCount in an if scope (between an if and its matched endif)
             int SkipEndIfCount = 0;
@@ -1692,6 +1620,7 @@ namespace CLPS2C_Compiler
             for (int i = ifIndex + 1; i < commands.Count; i++)
             {
                 CurrentWeight += commands[i].Weight;
+
                 if (commands[i].Type == "IF")
                 {
                     SkipEndIfCount++;
@@ -1710,9 +1639,8 @@ namespace CLPS2C_Compiler
             return 0;
         }
 
-        private static List<LocalVar_t> GetListSets(List<Command_t> commands)
+        static void GetListSets(List<Command_t> commands)
         {
-            List<LocalVar_t> ListSets = new();
             bool InsideFunction = false;
             foreach (var command in commands)
             {
@@ -1726,18 +1654,17 @@ namespace CLPS2C_Compiler
                 }
                 else if (command.Type == "SET" && !InsideFunction)
                 {
-                    ListSets.Add(HandleSet(command));
-                    ListSets.Last().ID = command.ID;
-                    if (_error)
+                    listSets.Add(HandleSet(command));
+                    listSets.Last().ID = command.ID;
+                    if (error)
                     {
                         break;
                     }
                 }
             }
-            return ListSets;
         }
 
-        private static void ReplaceInclude(List<Command_t> commands)
+        static void ReplaceInclude(List<Command_t> commands)
         {
             List<Command_t> FilteredList = new();
             bool InsideFunction = false;
@@ -1755,18 +1682,18 @@ namespace CLPS2C_Compiler
                 {
                     var IncludeCommands = HandleInclude(commands[i]);
                     IncludeCommands.ForEach(item => item.AppendToTraceback(commands[i].Traceback));
-                    if (_error)
+                    if (error)
                     {
                         return;
                     }
-                    commands.RemoveAt(i);
-                    commands.InsertRange(i, IncludeCommands);
-                    i--;
+                    commands.RemoveAt(i); // Remove the "Include" command
+                    commands.InsertRange(i, IncludeCommands); // Add all the commands found in the included file
+                    i--; // Start from the 1st included command
                 }
             }
         }
 
-        private static void GetFunctionList(List<Command_t> commands)
+        static void GetFunctionList(List<Command_t> commands)
         {
             for (int i = 0; i < commands.Count; i++)
             {
@@ -1793,7 +1720,7 @@ namespace CLPS2C_Compiler
                 }
 
                 HandleFunction(commands[FunctionIndex]);
-                if (_error)
+                if (error)
                 {
                     break;
                 }
@@ -1812,7 +1739,7 @@ namespace CLPS2C_Compiler
                     }
                     _functionList.Last().Commands!.Add(commands[j]);
                 }
-                if (_error)
+                if (error)
                 {
                     break;
                 }
@@ -1822,7 +1749,7 @@ namespace CLPS2C_Compiler
             }
         }
 
-        private static void ReplaceCall(ref List<Command_t> commands)
+        static void ReplaceCall(ref List<Command_t> commands)
         {
             int CallIndex = commands.FindIndex(item => item.Type == "CALL");
             while (CallIndex != -1)
@@ -1835,7 +1762,7 @@ namespace CLPS2C_Compiler
                 {
                     SetError(ERROR.CALL_STACK_OVERFLOW, CalledCommands[SameCallNameIndex]);
                 }
-                if (_error)
+                if (error)
                 {
                     return;
                 }
@@ -1847,7 +1774,15 @@ namespace CLPS2C_Compiler
             }
         }
 
-        private static Command_t ApplySetsToCommand(Command_t command, List<LocalVar_t> listSets)
+        // Default, use the global listSets
+        public static Command_t ApplySetsToCommand(Command_t command)
+        {
+            command = ApplySetsToCommand(command, listSets);
+            return command;
+        }
+
+        // Use a custom listSets, (used when handling function arguments)
+        static Command_t ApplySetsToCommand(Command_t command, List<LocalVar_t> listSets)
         {
             for (int i = 0; i < command.Data.Count; i++)
             {
@@ -1855,6 +1790,7 @@ namespace CLPS2C_Compiler
                 if (Target.StartsWith('+') || Target.StartsWith(','))
                 {
                     // "+off" = "off"
+                    // "+  off" = "off"
                     Target = Target.Substring(1).TrimStart();
                 }
 
@@ -1888,85 +1824,23 @@ namespace CLPS2C_Compiler
                 }
                 else if (command.Data[i].StartsWith('+') || command.Data[i].StartsWith(','))
                 {
+                    // If it started with + or , then add it back (we removed whitespace earlier)
                     command.Data[i] = command.Data[i][0] + Target;
                 }
             }
             return command;
         }
 
-        private static bool ApplySetsToCommands(List<Command_t> commands, List<LocalVar_t> listSets)
+        // Use a custom listSets, (used when handling function arguments)
+        static void ApplySetsToCommands(List<Command_t> commands, List<LocalVar_t> listSets)
         {
             for (int i = 0; i < commands.Count; i++)
             {
                 commands[i] = ApplySetsToCommand(commands[i], listSets);
-
-                // Apply sets only for the J and JAL opcodes
-                if (commands[i].Type == "ASM_START")
-                {
-                    int ASM_ENDIndex = commands.FindIndex(i, item => item.Type == "ASM_END");
-                    if (ASM_ENDIndex == -1)
-                    {
-                        SetError(ERROR.MISS_ASM_END, commands[i]);
-                        return false;
-                    }
-
-                    for (int j = i + 1; j < ASM_ENDIndex; j++)
-                    {
-                        string Label = "";
-                        string OpCode = "";
-
-                        // Handle a bit differently in case there's a label at the start
-                        if (commands[j].Type.EndsWith(':'))
-                        {
-                            Label = commands[j].Type;
-                            OpCode = commands[j].Data[0].ToUpper();
-                        }
-                        else
-                        {
-                            OpCode = commands[j].Type;
-                        }
-
-                        if (OpCode == "J" || OpCode == "JAL")
-                        {
-                            // Remove opcode if label is present, we'll add it back later
-                            if (Label != "")
-                            {
-                                commands[j].Data.RemoveAt(0);
-                            }
-                            commands[j] = ApplySetsToCommand(commands[j], listSets);
-
-                            // force values to be hexadecimal
-                            for (int k = 0; k < commands[j].Data.Count; k++)
-                            {
-                                string Target = commands[j].Data[k];
-                                if (Target.StartsWith("+"))
-                                {
-                                    if (!Target.StartsWith("+0x"))
-                                    {
-                                        // +ABC -> +0xABC
-                                        commands[j].Data[k] = "+0x" + Target.Substring(1);
-                                    }
-                                }
-                                else if (!Target.StartsWith("0x"))
-                                {
-                                    // 123 -> 0x123
-                                    commands[j].Data[k] = "0x" + Target;
-                                }
-                            }
-                            
-                            if (Label != "")
-                            {
-                                commands[j].Data.Insert(0, OpCode);
-                            }
-                        }
-                    }
-                    i = ASM_ENDIndex;
-                }
             }
-            return true;
         }
 
-        private static List<string> GetCallArgsFromCommand(Command_t command)
+        static List<string> GetCallArgsFromCommand(Command_t command)
         {
             // I don't know if there is a better way. This works and it's simple enough.
             List<string> CallArgs = new();
@@ -2012,13 +1886,26 @@ namespace CLPS2C_Compiler
             return CallArgs;
         }
 
-        private static string GetAddress(Command_t command, ref int i)
+        public static string GetAddress(Command_t command, ref int i)
+        {
+            int Tmp = GetAddressAsInt(command, ref i);
+            if (error)
+            {
+                return "";
+            }
+
+            string Address = Tmp.ToString("X8").Substring(1);
+            return Address;
+        }
+
+        static int GetAddressAsInt(Command_t command, ref int i)
         {
             if (!IsAddressValid(command.Data[i]))
             {
                 SetError(ERROR.ADDRESS_INVALID, command);
-                return "";
+                return 0;
             }
+
             int Tmp = ConvertAddress(command.Data[i]);
 
             for (i = i + 1; i < command.Data.Count; i++)
@@ -2027,24 +1914,27 @@ namespace CLPS2C_Compiler
                 {
                     break;
                 }
-                if (!IsAddressValid(command.Data[i].Substring(1)))
+
+                // Check if it's a valid hex number without the '+'
+                var partWithoutPlus = command.Data[i].Substring(1);
+                if (!IsAddressValid(partWithoutPlus))
                 {
                     SetError(ERROR.ADDRESS_INVALID, command);
-                    return "";
+                    return 0;
                 }
-                Tmp += ConvertAddress(command.Data[i].Substring(1));
+                Tmp += ConvertAddress(partWithoutPlus);
             }
-            string Address = Tmp.ToString("X8").Substring(1);
-            return Address;
+
+            return Tmp;
         }
 
-        private static List<string> GetAddresses(Command_t command, ref int i)
+        static List<string> GetAddresses(Command_t command, ref int i)
         {
             List<string> ListOffs = new();
             if (!IsAddressValid(command.Data[i]))
             {
                 SetError(ERROR.ADDRESS_INVALID, command);
-                return new List<string>();
+                return [];
             }
             int TmpAddress = ConvertAddress(command.Data[i]);
 
@@ -2065,7 +1955,7 @@ namespace CLPS2C_Compiler
                 if (!IsAddressValid(command.Data[i].Substring(1)))
                 {
                     SetError(ERROR.ADDRESS_INVALID, command);
-                    return new List<string>();
+                    return [];
                 }
                 TmpAddress += ConvertAddress(command.Data[i].Substring(1));
             }
@@ -2078,12 +1968,24 @@ namespace CLPS2C_Compiler
             return ListOffs;
         }
 
-        private static string GetIntValue(Command_t command, ref int i)
+        static string GetIntValue(Command_t command, ref int i)
+        {
+            int Tmp = GetIntValueAsInt(command, ref i);
+            if (error)
+            {
+                return "";
+            }
+
+            string Value = Tmp.ToString("X8");
+            return Value;
+        }
+
+        static int GetIntValueAsInt(Command_t command, ref int i)
         {
             if (!IsIntValueValid(command.Data[i]))
             {
                 SetError(ERROR.VALUE_INVALID, command);
-                return "";
+                return 0;
             }
             int Tmp = ConvertIntValue(command.Data[i]);
 
@@ -2096,15 +1998,15 @@ namespace CLPS2C_Compiler
                 if (!IsIntValueValid(command.Data[i].Substring(1)))
                 {
                     SetError(ERROR.VALUE_INVALID, command);
-                    return "";
+                    return 0;
                 }
                 Tmp += ConvertIntValue(command.Data[i].Substring(1));
             }
-            string Value = Tmp.ToString("X8");
-            return Value;
+
+            return Tmp;
         }
 
-        private static string GetFloatValue(Command_t command, ref int i)
+        static string GetFloatValue(Command_t command, ref int i)
         {
             if (!IsFloatValueValid(command.Data[i]))
             {
@@ -2144,7 +2046,7 @@ namespace CLPS2C_Compiler
             return Output.ToString("X8");
         }
 
-        private static string GetStringValue(Command_t command, ref int i)
+        static string GetStringValue(Command_t command, ref int i)
         {
             string Value = "";
             uint Sum = 0;
@@ -2193,7 +2095,7 @@ namespace CLPS2C_Compiler
 
                     if (!StartsAndEndsWithQuotes(Element))
                     {
-                        SetError(ERROR.WRONG_SYNTAX, command);
+                        SetError(ERROR.MISSING_QUOTES, command);
                         return "";
                     }
                     string Tmp = GetSubstringInQuotes(Element, false);
@@ -2237,7 +2139,7 @@ namespace CLPS2C_Compiler
             return Value;
         }
 
-        private static string GetRemainingOffsets(List<string> listOffs, out int weight)
+        static string GetRemainingOffsets(List<string> listOffs, out int weight)
         {
             string Output = "";
             weight = 0;
@@ -2247,7 +2149,7 @@ namespace CLPS2C_Compiler
                 if (i % 2 == 0)
                 {
                     weight += 1;
-                    Output += _newLine;
+                    Output += newLine;
                 }
                 else
                 {
@@ -2263,7 +2165,7 @@ namespace CLPS2C_Compiler
             return Output;
         }
 
-        private static void PopulateAbbreviationDict()
+        static void PopulateAbbreviationDict()
         {
             _commandsDict.Add("SE", "SETENCODING");
             _commandsDict.Add("SR", "SENDRAW");
@@ -2289,29 +2191,12 @@ namespace CLPS2C_Compiler
             _commandsDict.Add("D16", "DECREMENT16");
             _commandsDict.Add("D32", "DECREMENT32");
             _commandsDict.Add("EI", "ENDIF");
-            // No abbreviation:
-            // _commandsDict.Add("Set", "SET");
-            // _commandsDict.Add("Include", "INCLUDE");
-            // _commandsDict.Add("OR8", "OR8");
-            // _commandsDict.Add("OR16", "OR16");
-            // _commandsDict.Add("AND8", "AND8");
-            // _commandsDict.Add("AND16", "AND16");
-            // _commandsDict.Add("XOR8", "XOR8");
-            // _commandsDict.Add("XOR16", "XOR16");
-            // _commandsDict.Add("If", "IF");
         }
 
-        private static void SetError(ERROR errorValue, Command_t command)
+        public static void SetError(ERROR errorValue, Command_t command)
         {
-            _error = true;
+            error = true;
             _errorInfo.ErrorValue = errorValue;
-            _errorInfo.Command = command;
-        }
-
-        private static void SetError(KeystoneError keystoneErrorValue, Command_t command)
-        {
-            _error = true;
-            _errorInfo.KeystoneErrorValue = keystoneErrorValue;
             _errorInfo.Command = command;
         }
     }

@@ -1,0 +1,37 @@
+// There are 3 types of definitions in a nocash symbol file:
+// Label
+// [address] [name]
+// [address] Always hex without 0x prefix and can be up to 8 digits
+// [name] is a string and it's max 255 chars long
+
+// Function
+// [address] [name],[size]
+// [address] Always hex without 0x prefix and can be up to 8 digits
+// [name] is a string and it's max 255 chars long
+// [size] Always hex without 0x prefix and can be up to 8 digits
+
+// Data directive/Global variable
+// [address] .[type]:[size]
+// [address] Always hex without 0x prefix and can be up to 8 digits
+// [type] possible values: "byt", "wrd", "dbl", "asc"
+// [size] Always hex without 0x prefix and can be up to 8 digits
+
+CLPS2C creates "Set" variables for labels and functions. Everything else is ignored.
+
+This is a label definition:
+000F1000 myLabel
+Global variables are ignored:
+000F2000 .byt:10
+000F3000 .wrd:10
+000F4000 .dbl:10
+000F5000 .asc:10
+This is a function definition. It is called myFunction and it's 0x10 bytes long:
+000F6000 myFunction,00000010
+
+This line is ignored
+
+These are useful symbols for Sly 2 NTSC:
+001A7518 main // The game's main() method.
+001F7C68 spawnEntity ; Spawn entity
+001A5630 despawnEntity These next words are ignored, this is a label definition for "despawn entity"
+1C3ED8 changeCharacter // The [address] argument doesn't have to be 8 digits long

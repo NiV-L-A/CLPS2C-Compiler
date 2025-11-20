@@ -2,7 +2,7 @@
 
 
 CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-Version: 1.0.3
+Version: 1.0.4
 GitHub: https://github.com/NiV-L-A/CLPS2C-Compiler
 
 
@@ -28,12 +28,12 @@ The main goal of the project is to have better managment and readability when ch
 The app supports, among other things:
 - Write all code types supported by ps2rd and Cheat Device
 - Output RAW or pnach-formatted cheat lines
-- Write MIPS Assembly
+- Write MIPS Assembly (PS2 Emotion Engine R5900)
 - Automatic calculation for how many lines to execute in "If" commands
 - Support for logical AND in "If" commands
 - Set local variables to be referenced by name
 - Define functions with arguments and call them
-- Include CLPS2C files in other CLPS2C files
+- Include CLPS2C or nocash symbol files in other CLPS2C files
 
 Usage: CLPS2C-Compiler.exe
   -i, --input     The file to be parsed. Example: -i "C:\Users\admin\Desktop\CLPS2C\Test1.txt"
@@ -48,7 +48,7 @@ Usage: CLPS2C-Compiler.exe
 - All (ADDRESS) must be a valid hexadecimal number:
   - consisting of up to 8 digits,
   - with or without the prefix "0x",
-  - with or without the negative "-" sign (hyphen symbol, not the dash symbol "—").
+  - with or without the negative "-" symbol (hyphen symbol, not the dash symbol "—").
 - All (VALUE) are always considered decimal,
   adding the prefix "0x" will make them hexadecimal
   adding the prefix "-" (hyphen symbol, not the dash symbol "—") will make them negative
@@ -69,6 +69,8 @@ Usage: CLPS2C-Compiler.exe
     Set myString "test" + myVar + " environment" // myString now contains "test1 environment"
 - There can be any number of spaces/tabs before and/or after a command.
 - Support for single-line ("//") and multi-line ("/*" "*/") comments.
+- Support for "Infinity" (0x7F800000), "-Infinity" (0xFF800000) and "NaN" (0xFFC00000).
+  Do note that the PS2 does not support non-numeric and infinity values.
 - Support for escape characters in strings:
   \0    Null terminator. Byte representation: 0x00
   \n    New line. Byte representation: 0x0A
@@ -83,55 +85,71 @@ Usage: CLPS2C-Compiler.exe
   - Command names ("SET" is equivalent to "set").
 
 - In the case the app encounters an error, the output will display some information about the first error encountered:
- - The type of error (see below),
- - The line that produced it,
- - The line number,
+ - The CLPS2C version, the date and time at the moment the input file was compiled
+ - The type of error (see below)
+ - The line that produced it
+ - The line number
  - The traceback, which provides information about the sequence of commands that led to the point where the error occurred
    (useful when there're function calls and/or "Include" commands).
-The following is a list of possible errors:
-- CLPS2C errors:
-  - UNKNOWN_COMMAND
-    An unknown command has been detected. Check the list of commands supported in the documentation -> "List of commands" section.
-  - WRONG_SYNTAX
-    There is something wrong with the command's syntax. Check the list of commands and their syntaxes in the documentation -> "List of commands" section.
-  - ADDRESS_INVALID
-    The (ADDRESS) argument was invalid. Check the conditions for a valid (ADDRESS) in the documentation -> "Description and Settings" section.
-  - VALUE_INVALID
-    The (VALUE) argument was invalid. Check the conditions for a valid (VALUE) in the documentation -> "Description and Settings" section.
-  - MISS_ENDIF
-    An "If" scope was opened but not closed. An "If" command must always have an "EndIf" command.
-  - MISS_ASM_START
-    An "ASM_END" command was detected but no matching "ASM_START" command is present. An "ASM_END" command must always have an "ASM_START" command.
-  - MISS_ASM_END
-    An "ASM_START" scope was opened but not closed. An "ASM_START" command must always have an "ASM_END" command.
-  - MISS_FUNCTION
-    An "EndFunction" command was detected but no matching "Function" command is present. An "EndFunction" command must always have a "Function" command.
-  - MISS_ENDFUNCTION
-    A "Function" scope was opened but not closed. A "Function" command must always have an "EndFunction" command.
-  - FUNCTION_COMMAND_INSIDE_FUNCTION_DEFINITION
-    A "Function" command was detected inside a "Function" definition. A "Function" scope must not have a "Function" command inside.
-  - FUNCTION_ALREADY_DEFINED
-    A "Function" command with the same (NAME) has already been defined. A function must not be defined more than once.
-  - INCLUDE_COMMAND_INSIDE_FUNCTION_DEFINITION
-    An "Include" command was detected inside a "Function" definition. A "Function" scope must not have an "Include" command inside.
-  - INCLUDE_STACK_OVERFLOW
-    An "Include" command was trying to include an already included file. This would create infinite recursion and result in a StackOverflowException.
-    A file must not include itself, or include another file which includes one of the previous files.
-  - CALL_STACK_OVERFLOW
-    A "Call" command was trying to call the function in which it is defined. This would create infinite recursion and result in a StackOverflowException.
-    Recursive functions are not allowed.
-  - ARGUMENT_COUNT_MISMATCH
-    The count of the arguments in the "Function" definition and the count of the arguments passed to the function with the "Call" command are not equal.
-    The count of the arguments in the "Function" command and the ones in the "Call" command must be equal.
-- Keystone engine (assembly) errors:
-  - KS_ERR_ASM_SYMBOL_MISSING
-    The Keystone engine could not find a symbol. This usually occurs because there's a branch/jump instruction to a label which has not been defined.
-  - KS_ERR_ASM_MNEMONICFAIL
-    The Keystone engine could not recognize an opcode. Note that not all opcodes supported by the PS2's MIPS R5900 CPU are supported in Keystone.
-  - KS_ERR_ASM_INVALIDOPERAND
-    The Keystone engine could not correctly parse the assembly instruction.
-    This usually occurs because the dollar sign ("$") symbol is missing before referencing a register ("t1" instead of "$t1"),
-    or because of an invalid number (for example, in the line "lw $t1,0xq", "0xq" is not a valid hexadecimal number).
+The following is a list of possible error types:
+ - UNKNOWN_COMMAND
+   An unknown command has been detected. Check the list of commands supported in the documentation -> "List of commands" section.
+ - WRONG_SYNTAX
+   There is something wrong with the command's syntax. Check the list of commands and their syntaxes in the documentation -> "List of commands" section.
+ - ADDRESS_INVALID
+   The (ADDRESS) argument was invalid. Check the conditions for a valid (ADDRESS) in the documentation -> "Description and Settings" section.
+ - VALUE_INVALID
+   The (VALUE) argument was invalid. Check the conditions for a valid (VALUE) in the documentation -> "Description and Settings" section.
+ - MISS_ENDIF
+   An "If" scope was opened but not closed. An "If" command must always have an "EndIf" command.
+ - MISS_ASM_START
+   An "ASM_END" command was detected but no matching "ASM_START" command is present. An "ASM_END" command must always have an "ASM_START" command.
+ - MISS_ASM_END
+   An "ASM_START" scope was opened but not closed. An "ASM_START" command must always have an "ASM_END" command.
+ - MISS_FUNCTION
+   An "EndFunction" command was detected but no matching "Function" command is present. An "EndFunction" command must always have a "Function" command.
+ - MISS_ENDFUNCTION
+   A "Function" scope was opened but not closed. A "Function" command must always have an "EndFunction" command.
+ - FUNCTION_COMMAND_INSIDE_FUNCTION_DEFINITION
+   A "Function" command was detected inside a "Function" definition. A "Function" scope must not have a "Function" command inside.
+ - FUNCTION_ALREADY_DEFINED
+   A "Function" command with the same (NAME) has already been defined. A function must not be defined more than once.
+ - INCLUDE_COMMAND_INSIDE_FUNCTION_DEFINITION
+   An "Include" command was detected inside a "Function" definition. A "Function" scope must not have an "Include" command inside.
+ - INCLUDE_STACK_OVERFLOW
+   An "Include" command was trying to include an already included file. This would create infinite recursion and result in a StackOverflowException.
+   A file must not include itself, or include another file which includes one of the previous files.
+ - CALL_STACK_OVERFLOW
+   A "Call" command was trying to call the function in which it is defined. This would create infinite recursion and result in a StackOverflowException.
+   Recursive functions are not allowed.
+ - ARGUMENT_COUNT_MISMATCH
+   The count of the arguments in the "Function" definition and the count of the arguments passed to the function with the "Call" command are not equal.
+   The count of the arguments in the "Function" command and the ones in the "Call" command must be equal.
+ - MISSING_QUOTES
+   The argument must start and end with quotes.
+ - LENGTH_MUST_BE_DIVISIBLE_BY_2
+   The length argument must be divisible by 2.
+ - LENGTH_MUST_BE_DIVISIBLE_BY_4
+   The length argument must be divisible by 4.
+ - ASM_UNKNOWN_MNEMONIC
+   The assembler could not recognize an opcode. Note that not all opcodes supported by the PS2's MIPS R5900 CPU are supported in CLPS2C.
+ - ASM_WRONG_SYNTAX
+   The assembler could not assemble the instruction. Make sure its syntax is correct.
+ - ASM_UNDEFINED_LABEL
+   The assembler could not find a label. This usually occurs because there's a branch instruction to a label which has not been defined.
+ - ASM_LABEL_ALREADY_DEFINED
+   The assembler has already encountered a label with the same name. The same assembly scope can't have more than one label with the same name.
+   Note that labels are case-insensetive.
+ - ASM_UNKNOWN_REGISTER
+   The assembler could not assemble the instruction because an unknown register has been detected. Make sure its syntax is correct.
+ - ASM_WRONG_DEST
+   The "dest" field is wrong. The "dest" field should have length between 1 and 4, in which the allowed letters are "x", "y", "z" and "w", and each letter must only appear once.
+ - ASM_WRONG_INTERLOCK
+   The "interlock" field is wrong. The "interlock" field should have length of 1 and the only allowed letter is "i".
+ - ASM_IMMEDIATE_VALUE_INVALID
+   The "immediate" field is wrong.
+ - ASM_SHIFT_AMOUNT_VALUE_INVALID
+   The "shift amount" field is wrong. The "shift amount" field should be between 0x00 and 0x1F.
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -293,11 +311,101 @@ ASM_START (ADDRESS)
 ASM_END
     Defines the beginning and ending of an assembly scope.
     While in this scope, all the other CLPS2C commands can't be executed (with the exception of the ASM_END command).
-    While in this scope, values set with the Set command will not be applied, with the exception of the "J" and "JAL" opcodes.
-    Every register must be prefixed with the dollar sign ($).
-    Labels can be used, but the first instruction must be on the same line as the label ("myLabel: li $t0,1").
+    All "immediate" fields are parsed as decimal, or as hexadecimal if they have the "0x" prefix.
+    The "immediate" fields of the load, store, J and JAL instructions are always parsed as hexadecimal.
+    While in this scope, values set with the Set command will be applied only for the "immediate" fields:
+        For example, the immediate value for the "addi" instruction or the offset for a load/store instruction.
+        The "J" and "JAL" opcodes also support the addition operator.
+    Registers may or may not be prefixed with a dollar symbol ($).
+    Labels can be used and are case-insensitive. The first instruction can be on the same line as the label or on a new line.
     Always have an ASM_END command to indicate the termination of the assembly scope.
     NOTE: You must manually add the branch delay slot after any branch instruction.
+    Supported instructions:
+        add, addi, addiu, addu, and, andi, beq, beql, bgez, bgezal, bgezall, bgezl, bgtz, bgtzl, blez, blezl,
+        bltz, bltzal, bltzall, bltzl, bne, bnel, break, dadd, daddi, daddiu, daddu, div, divu, dsll, dsll32, dsllv,
+        dsra, dsra32, dsrav, dsrl, dsrl32, dsrlv, dsub, dsubu, j, jal, jalr, jr, lb, lbu, ld, ldl,
+        ldr, lh, lhu, lui, lw, lwl, lwr, lwu, mfhi, mflo, movn, movz, mthi, mtlo, mult, multu,
+        nor, or, ori, sb, sd, sdl, sdr, sh, sll, sllv, slt, slti, sltiu, sltu, sra, srav,
+        srl, srlv, sub, subu, sw, swl, swr, sync, syscall, teq, teqi, tge, tgei, tgeiu, tgeu, tlt,
+        tlti, tltiu, tltu, tne, tnei, xor, xori, div1, divu1, lq, madd, madd1, maddu, maddu1, mfhi1, mflo1,
+        mfsa, mthi1, mtlo1, mtsa, mtsab, mtsah, mult1, multu1, pabsh, pabsw, paddb, paddh, paddsb, paddsh, paddsw, paddub,
+        padduh, padduw, paddw, padsbh, pand, pceqb, pceqh, pceqw, pcgtb, pcgth, pcgtw, pcpyh, pcpyld, pcpyud, pdivbw, pdivuw,
+        pdivw, pexch, pexcw, pexeh, pexew, pext5, pextlb, pextlh, pextlw, pextub, pextuh, pextuw, phmadh, phmsbh, pinteh, pinth,
+        plzcw, pmaddh, pmadduw, pmaddw, pmaxh, pmaxw, pmfhi, pmfhl.lh, pmfhl.lw, pmfhl.sh, pmfhl.slw, pmfhl.uw, pmflo, pminh, pminw, pmsubh,
+        pmsubw, pmthi, pmthl.lw, pmtlo, pmulth, pmultuw, pmultw, pnor, por, ppac5, ppacb, ppach, ppacw, prevh, prot3w, psllh,
+        psllvw, psllw, psrah, psravw, psraw, psrlh, psrlvw, psrlw, psubb, psubh, psubsb, psubsh, psubsw, psubub, psubuh, psubuw,
+        psubw, pxor, qfsrv, sq, abs.s, add.s, adda.s, bc1f, bc1fl, bc1t, bc1tl, c.eq.s, c.f.s, c.le.s, c.lt.s, cfc1,
+        ctc1, cvt.s.w, cvt.w.s, div.s, lwc1, madd.s, madda.s, max.s, mfc1, min.s, mov.s, msub.s, msuba.s, mtc1, mul.s, mula.s,
+        neg.s, rsqrt.s, sqrt.s, sub.s, suba.s, swc1, cfc2, ctc2, lqc2, qmfc2, qmtc2, sqc2, vabs, vadd, vaddi, vaddq,
+        vaddx, vaddy, vaddz, vaddw, vadda, vaddai, vaddaq, vaddax, vadday, vaddaz, vaddaw, vclipw.xyz, vftoi0, vftoi4, vftoi12, vftoi15,
+        viadd, viaddi, viand, vior, visub, vitof0, vitof4, vitof12, vitof15, vmadd, vmaddi, vmaddq, vmaddx, vmaddy, vmaddz, vmaddw,
+        vmadda, vmaddai, vmaddaq, vmaddax, vmadday, vmaddaz, vmaddaw, vmax, vmaxi, vmaxx, vmaxy, vmaxz, vmaxw, vmfir, vmini, vminii,
+        vminix, vminiy, vminiz, vminiw, vmove, vmr32, vmsub, vmsubi, vmsubq, vmsubx, vmsuby, vmsubz, vmsubw, vmsuba, vmsubai, vmsubaq,
+        vmsubax, vmsubay, vmsubaz, vmsubaw, vmul, vmuli, vmulq, vmulx, vmuly, vmulz, vmulw, vmula, vmulai, vmulaq, vmulax, vmulay,
+        vmulaz, vmulaw, vnop, vopmula.xyz, vopmsub.xyz, vrget, vrnext, vsub, vsubi, vsubq, vsubx, vsuby, vsubz, vsubw, vsuba, vsubai,
+        vsubaq, vsubax, vsubay, vsubaz, vsubaw, vwaitq
+    Supported pseudo-instructions and what they expand to:
+        b label           -> beq $zero,$zero,label
+        blt $t0,$t1,label -> slt $at,$t0,$t1 + bne $at,$zero,label // branch to label if $t0 < $t1
+        bge $t0,$t1,label -> slt $at,$t0,$t1 + beq $at,$zero,label // branch to label if $t0 >= $t1
+        ble $t0,$t1,label -> slt $at,$t1,$t0 + beq $at,$zero,label // branch to label if $t0 <= $t1
+        bgt $t0,$t1,label -> slt $at,$t1,$t0 + bne $at,$zero,label // branch to label if $t0 > $t1
+        beqz $t0,label    -> beq $t0,$zero,label
+        beqzl $t0,label   -> beql $t0,$zero,label
+        bnez $t0,label    -> bne $t0,$zero,label
+        bnezl $t0,label   -> bnel $t0,$zero,label
+        li $t0,0x1234     -> ori $t0,$zero,0x1234
+        li $t0,0x8123     -> ori $t0,$zero,0x8123
+        li $t0,0x12340000 -> lui $t0,$zero,0x1234
+        li $t0,0x12345678 -> lui $t0,$zero,0x1234 + ori $t0,$t0,0x5678
+        nop               -> sll $zero,$zero,0
+        neg $t0,$t1       -> sub $t0,$zero,$t1
+        negu $t0,$t1      -> subu $t0,$zero,$t1
+        move $t0,$t1      -> or $t0,$t1,$zero
+        dmove $t0,$t1     -> or $t0,$t1,$zero
+    The following instructions can be abbreviated (2 arguments instead of 3, for example: "add $t0,$t1" instead of "add $t0,$t0,$t1").
+        addi, addiu, slti, sltiu, andi, ori, xori, daddi, daddiu, sll, srl, sra, sllv, srav, dsrav, add,
+        addu, sub, subu, and, or, xor, nor, slt, sltu, dsll, dsrl, dsra, dsll32, dsrl32, dsra32, madd,
+        maddu, mult1, multu1, madd1, maddu1, paddw, psubw, pcgtw, pmaxw, paddh, psubh, pcgth, pmaxh, paddb, psubb, pcgtb,
+        paddsw, psubsw, pextlw, ppacw, paddsh, psubsh, pextlh, ppach, paddsb, psubsb, pextlb, ppacb, pceqw, pminw, padsbh, pceqh,
+        pminh, pceqb, padduw, psubuw, pextuw, ppacw, padduh, psubuh, pextuh, ppach, paddub, psubub, pextub, qfsrv, pmaddw, psllvw,
+        psrlvw, pmsubw, pinth, pmultw, pcpyld, pmaddh, phmadh, pand, pxor, pmsubh, phmsbh, pmulth, pmadduw, psravw, pinteh, pmultuw,
+        pcpyud, por, pnor, add.s, sub.s, mul.s, div.s, madd.s, msub.s
+    The following instructions will be expanded by placing the "$zero" register in the "rt" field.
+        dsllv $t0,$t1 -> dsllv $t0,$zero,$t1
+        dsrlv $t0,$t1 -> dsrlv $t0,$zero,$t1
+    The instructions that specify a broadcast field ("dest") do not need to specify the broadcast field again for the last parameter.
+        For example:
+            vaddx.xyzw $vf10,$vf11,$vf12 // valid
+            vaddy.xyzw $vf10,$vf11,$vf12 // valid
+            vaddz.xyzw $vf10,$vf11,$vf12 // valid
+            vaddw.xyzw $vf10,$vf11,$vf12 // valid
+            vaddx.xyzw $vf10,$vf11,$vf12x // invalid
+            vaddy.xyzw $vf10,$vf11,$vf12y // invalid
+            vaddz.xyzw $vf10,$vf11,$vf12z // invalid
+            vaddw.xyzw $vf10,$vf11,$vf12w // invalid
+    The instructions that interact with the "I" register do not need to specify the use of the "I" register.
+        For example:
+            vaddi.xyzw $vf10,$vf11 // valid
+            vaddi.xyzw $vf10,$vf11,I // invalid
+    The instructions that interact with the "Q" register do not need to specify the use of the "Q" register.
+        For example:
+            vaddq.xyzw $vf10,$vf11 // valid
+            vaddq.xyzw $vf10,$vf11,Q // invalid
+    The instructions that interact with the "ACC" register do not need to specify the use of the "ACC" register.
+        For example:
+            vadda.xyzw $vf10,$vf11 // valid
+            vadda.xyzw ACC,$vf10,$vf11 // invalid
+    The instructions that interact with the "R" register do not need to specify the use of the "R" register.
+        For example:
+            vrget.xyzw $vf10 // valid
+            vrget.xyzw $vf10,R // invalid
+    The "vclipw.xyz" instruction does not need to specify the use of the "dest" field in the parameters.
+        For example:
+            vclipw.xyz $vf10,$vf11 // valid
+            vclipw.xyz $vf10xyz,$vf11w // invalid
+    The following instructions support interlocking by appending ".i" at the end of the mnemonic.
+        cfc2, ctc2, qmfc2, qmtc2
     
     Arguments:
         (ADDRESS) Starting address
@@ -311,17 +419,20 @@ ASM_END
         ASM_START Cave
             /*Load immediate ($t0 = 0x003D10A0). Equivalent to "lui $t0,0x003D; ori $t0,$t0,0x10A0".*/
             li $t0,0x003D10A0
-
+            
+            /*Load immediate ($t0 = 100). Equivalent to "ori $t0,$t0,100".*/
+            li $t0,100
+            
             /*Load word ($t0 = *0x003D10A0). Reads 4 bytes at the specified address and stores the value in the specified register.*/
             /*Equivalent to "lui $t0,0x003D; lw $t0,0x10A0($t0)".*/
             lw $t0,0x003D10A0
 
-            /*Load immediate in a float register. Loads 60f in the $f4 register.*/
+            /*Load immediate in a float register. Loads 60.0f in the $f4 register.*/
             li $t0,60 // load 60 as int in $t0.
             mtc1 $t0,$f4 // move to coprocessor 1 (FPU)'s register $f4.
             cvt.s.w $f4,$f4 // converts a word to a floating point (60 -> 60f).
 
-            /*Load immediate in a float register. Loads 1f in the $f12 register.*/
+            /*Load immediate in a float register. Loads 1.0f in the $f12 register.*/
             lui $t0,0x3F80 // load 0x3F800000 in $t0 (0x3F800000 is 1 in float).
             mtc1 $t0,$f12 // move to coprocessor 1 (FPU)'s register $f12.
         ASM_END
@@ -329,7 +440,7 @@ ASM_END
         /* Example with JAL instruction that uses a set variable */
         Set myFunction 0xF0EE0
         ASM_START 0x1A761C // hook
-            jal myFunction // values set with the Set command are only available for the "J" and "JAL" opcodes
+            jal myFunction
             nop
         ASM_END
         ASM_START myFunction // codecave
@@ -344,7 +455,7 @@ ASM_END
         Set hook 0x1A761C
         Set codeCave 0xF0EE0
         ASM_START hook
-            j codeCave // values set with the Set command are only available for the "J" and "JAL" opcodes
+            j codeCave
             nop
         ASM_END
         ASM_START codeCave
@@ -363,18 +474,34 @@ ASM_END
             nop
             b Exit
             nop
-            DisableFlag: li $at,0 // disable flag
-                lui $t0,0x003D
-                sw $at,0xD00($t0) // can also get the value 0 from the register $zero instead of loading the value in the register $at
-            Exit: jr $ra // return
+            // label with the next instruction on the same line
+            DisableFlag: sw $zero,0x0($t0) // disable flag
+            // label with the next instruction on a new line
+            Exit:
+                jr $ra // return
                 nop
+        ASM_END
+        
+        // Read the X coordinate of the character
+        Set CharacterPointer 0x2E1E40
+        Set TransformationOffset 0x58
+        Set XCoordOffset 0x30
+        ASM_START F0000
+            lw $t0,CharacterPointer
+            lw $t0,TransformationOffset($t0)
+            lwc1 $f10,XCoordOffset($t0)
         ASM_END
 
 ///////////////////////////////////////////////////////////////////////
 
 Include (VALUE)
-    Parses a specific file.
+    Parses a CLPS2C or a nocash symbol file.
     Condition for (VALUE): Always use the double quotes symbol (") as the prefix and suffix.
+    If the included file has the ".sym" extension, it is parsed as a nocash symbol file:
+        A "Set" variable is created for every label and function definition (data directives/global variables are ignored).
+        These variables can be used for normal CLPS2C commands and in assembly scopes.
+        Please, check the example ".sym" file for more information about the correct syntax of a nocash symbol file.
+    If the included file does not have the ".sym" extension, it is parsed as a CLPS2C file.
     It's possible that an Include command is present in an included file:
         For example, let the file "Engine.txt" have this line of code: Include "Player.txt"
         By including the "Engine.txt" file, it will also parse the line above, and so, also include the "Player.txt" file.
@@ -409,6 +536,12 @@ Include (VALUE)
         // This will display a WRONG_SYNTAX error. The (VALUE) argument can't be replaced with a variable.
         Set MyFile "IncludeExample/Sly2/NTSC/Engine.txt"
         Include MyFile
+        
+        // Include nocash symbol file
+        Include "IncludeExample/Sly2/NTSC/Sly 2 - Band of Thieves (USA).sym"
+        ASM_START myFunction // myFunction is a symbol set in the file referenced above
+            li $t0,1
+        ASM_END
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -730,7 +863,7 @@ Fill8|F8 (ADDRESS) (VALUE1) (VALUE2)
     Condition for (VALUE1): 0x00 <= (VALUE1) <= 0xFF
     Condition for (VALUE2): 0x00 <= (VALUE2) <= 0xFFFF
     NOTE: This command outputs a 8-type code ("8-bit constant serial write").
-        Latest PCSX2 (v2.2.0) does not support 8-type codes.
+        Latest PCSX2 (v2.4.0) does not support 8-type codes.
     
     Arguments:
         (ADDRESS) Starting address
@@ -756,7 +889,7 @@ Fill16|F16 (ADDRESS) (VALUE1) (VALUE2)
     Condition for (VALUE2): 0x00 <= (VALUE2) <= 0x1FFFE
     NOTE: (VALUE2) must be divisible by 2.
     NOTE: This command outputs a 8-type code ("16-bit constant serial write").
-        Latest PCSX2 (v2.2.0) does not support 8-type codes.
+        Latest PCSX2 (v2.4.0) does not support 8-type codes.
     
     Arguments:
         (ADDRESS) Starting address
@@ -1299,7 +1432,7 @@ _/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\-/|\_
 203D1024 AC2C0E14
 203D1028 AC2D0E18
 203D102C 8C280D00
-203D1030 24090001
+203D1030 34090001
 203D1034 11090003
 203D1038 00000000
 203D103C 10000008
@@ -1327,7 +1460,7 @@ patch=1,EE,203D1020,extended,AC2B0E10
 patch=1,EE,203D1024,extended,AC2C0E14
 patch=1,EE,203D1028,extended,AC2D0E18
 patch=1,EE,203D102C,extended,8C280D00
-patch=1,EE,203D1030,extended,24090001
+patch=1,EE,203D1030,extended,34090001
 patch=1,EE,203D1034,extended,11090003
 patch=1,EE,203D1038,extended,00000000
 patch=1,EE,203D103C,extended,10000008
@@ -1357,7 +1490,6 @@ Special thanks:
 - Icon made by Cooper941: https://www.youtube.com/@Cooper941
 - TheOnlyZac for suggesting how to handle certain scenarios: https://github.com/TheOnlyZac
 - Testing done by zzamizz: https://github.com/zzamizz
-- MIPS assembler engine from Keystone-engine: https://github.com/NiV-L-A/keystone
 - commandline by commandlineparser: https://github.com/commandlineparser/commandline
 
 Useful links:
@@ -1369,5 +1501,7 @@ Useful links:
 - https://github.com/root670/CheatDevicePS2/blob/master/engine/engine_asm.S
 - https://math-atlas.sourceforge.net/devel/assembly/mips-iv.pdf
 - https://psi-rockin.github.io/ps2tek/
+- https://github.com/PCSX2/pcsx2/blob/master/pcsx2/DebugTools/MipsAssemblerTables.cpp
+- https://problemkaputt.de/gbatek-symbolic-debug-info.htm
 
 ///////////////////////////////////////////////////////////////////////

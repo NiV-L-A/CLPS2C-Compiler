@@ -15,3 +15,9 @@ or, you can include the "All.txt" file like this:<br>
 Include "IncludeExample/Sly2/NTSC/All.txt"
 ```
 which will include the 4 .txt files above.
+
+"Sly 2 - Band of Thieves (USA).sym" is an example file to test the "Include" command ability to parse a nocash symbol file.<br>
+To include this file, write the following command:<br>
+```
+Include "IncludeExample/Sly2/NTSC/Sly 2 - Band of Thieves (USA).sym"
+```

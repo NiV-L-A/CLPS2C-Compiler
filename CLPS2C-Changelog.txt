@@ -1,3 +1,39 @@
+Version 1.0.4 (20/11/2025)
+    - Updated to .net10.
+    - The "ERROR" output now includes the CLPS2C version, the date and time at the moment the input file was compiled.
+    - Fixed bugs:
+        - Added case-insensitivity for the "Function" command.
+        - Added case-insensitivity for the "Call" command.
+    - Added support for parsing nocash symbol files through the "Include" command:
+        - The symbol file must have ".sym" extension.
+        - A "Set" variable is created for every label and function definition (data directives/global variables are ignored). These variables can be used for normal CLPS2C commands and in assembly scopes.
+        - Added "Sly 2 - Band of Thieves (USA).sym" as an example file.
+    - Added the following ERROR values:
+        - MISSING_QUOTES
+        - LENGTH_MUST_BE_DIVISIBLE_BY_2
+        - LENGTH_MUST_BE_DIVISIBLE_BY_4
+        - ASM_UNKNOWN_MNEMONIC
+        - ASM_WRONG_SYNTAX
+        - ASM_UNDEFINED_LABEL
+        - ASM_LABEL_ALREADY_DEFINED
+        - ASM_UNKNOWN_REGISTER
+        - ASM_WRONG_DEST
+        - ASM_WRONG_INTERLOCK
+        - ASM_IMMEDIATE_VALUE_INVALID
+        - ASM_SHIFT_AMOUNT_VALUE_INVALID
+    - Assembly:
+        - Removed Keystone.
+        - Added more instructions.
+        - Registers may or may not be prefixed with a dollar symbol ($).
+        - The first instruction of a label can be on a new line.
+        - Added support for variables to be valid arguments for "immediate" fields.
+    - Changed documentation:
+        - Edited the "Include (VALUE)" command to describe the ability of parsing a nocash symbol file and added an example that uses it.
+    - Changed README:
+        - Added mention of nocash symbol files being supported.
+    - Changed IncludeExample's README:
+        - Added mention of nocash symbol files being supported.
+
 Version 1.0.3 (07/11/2024)
     - Assembly:
         - Added support for variables to be valid arguments for "J" and "JAL" opcodes.

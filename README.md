@@ -1,7 +1,8 @@
 # CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
 <p align="center">
-  <img width="256" height="256" src="CLPS2C-Compiler/256x256.ico">
+  <img width="256" height="256" src="CLPS2C-Compiler/Img/256x256.ico">
 </p>
+
 
 ## Description
 CLPS2C is a domain-specific language, built specifically for writing PS2 cheat codes. <br>
@@ -13,14 +14,14 @@ The main goal of the project is to have better managment and readability when ch
 The app supports, among other things:
 - Write all code types supported by ps2rd and Cheat Device
 - Output RAW or pnach-formatted cheat lines
-- Write MIPS Assembly
+- Write MIPS Assembly (PS2 Emotion Engine R5900)
 - Automatic calculation for how many lines to execute in "If" commands
 - Support for logical AND in "If" commands
 - Set local variables to be referenced by name
 - Define functions with arguments and call them
-- Include CLPS2C files in other CLPS2C files
+- Include CLPS2C or nocash symbol files in other CLPS2C files
 
-## Example code
+## Example code (CLPS2C)
 ```
 // Variables which will be used later
 Set MapID 0x3E1110
@@ -70,9 +71,81 @@ E0090000 003D4B00
 1008731C 00000074
 ```
 
+## Example code (CLPS2C - Assembly)
+```
+// Write the active character's XYZ coordinates (accessed by a pointer)
+// to a specific address (003D0E10/4/8)
+// If the value at 003D0D00 is 1, then get the values from 003D0E10/4/8
+// and write them to the active character's coordinates
+// - 002DE2F0,0x58,0x30/4/8 active character's coords 
+// - 003D1000 address to store our assembly code (codecave)
+// - 003D0E10/4/8 address to store a copy of the coords
+// - 003D0D00 custom flag. If it's 1, get the values from 003D0E00/4/8 and write them to the active character's coords
+Set Cave 003D1000
+ASM_START Cave
+    // Go to the active character's transformation component
+    lw $t1,0x2DE2F0 // read active character pointer
+    addi $t2,$t1,0x58 // add transformation offset
+    lw $t2,($t2) // read the transformation pointer
+    // Our target address (where we want to store the coords) is at 003D0E10
+    lui $at,0x3D // All of our custom addresses are at 003Dnnnn. Load 003D0000
+    lw $t3,0x30($t2) // get x coord
+    lw $t4,0x34($t2) // get y coord
+    lw $t5,0x38($t2) // get z coord
+    sw $t3,0xE10($at) // store x coord at custom address
+    sw $t4,0xE14($at) // store y coord at custom address
+    sw $t5,0xE18($at) // store z coord at custom address
+    // Check flag
+    lw $t0,0xD00($at)
+    li $t1,0x1
+    beq $t0,$t1,SetCustomCoords // if the value at 003D0D00 == 1, then branch to SetCustomCoords
+    nop // delay slot. Before taking the branch, the cpu will execute this line. Let's place a nop so it doesn't do anything.
+    b Exit // else, branch to Exit
+    nop // delay slot
+    SetCustomCoords: sw $zero,0xD00($at) // set flag to 0
+        lw $t3,0xE00($at) // load custom x coord
+        lw $t4,0xE04($at) // load custom y coord
+        lw $t5,0xE08($at) // load custom z coord
+        sw $t3,0x30($t2) // store x coord
+        sw $t4,0x34($t2) // store y coord
+        sw $t5,0x38($t2) // store z coord
+    Exit: jr $ra // return
+        nop // delay slot
+ASM_END
+```
+Output:
+```
+203D1000 3C09002E
+203D1004 8D29E2F0
+203D1008 212A0058
+203D100C 8D4A0000
+203D1010 3C01003D
+203D1014 8D4B0030
+203D1018 8D4C0034
+203D101C 8D4D0038
+203D1020 AC2B0E10
+203D1024 AC2C0E14
+203D1028 AC2D0E18
+203D102C 8C280D00
+203D1030 34090001
+203D1034 11090003
+203D1038 00000000
+203D103C 10000008
+203D1040 00000000
+203D1044 AC200D00
+203D1048 8C2B0E00
+203D104C 8C2C0E04
+203D1050 8C2D0E08
+203D1054 AD4B0030
+203D1058 AD4C0034
+203D105C AD4D0038
+203D1060 03E00008
+203D1064 00000000
+```
+
 ## How to run / Troubleshooting
-**IMPORTANT:** .NET Desktop Runtime 8.0 must be installed in order to run this program.<br>
-https://dotnet.microsoft.com/en-us/download/dotnet/8.0
+**IMPORTANT:** .NET Desktop Runtime 10.0 must be installed in order to run this program.<br>
+https://dotnet.microsoft.com/en-us/download/dotnet/10.0
 
 Usage:
 ```
@@ -99,18 +172,22 @@ It is recommended to use [vscode-clps2c](https://github.com/NiV-L-A/vscode-clps2
 - WritePointerString, WritePointerBytes and FillBytes commands.
 - If commands with logical OR (||) operator.
 - The (VALUE) for the SendRaw and WriteString commands will always be printed as decimal if it's a variable. Add ":X8" or some way to force it hexadecimal.
+- Binary representation for values (0b...)
 
 ## Build instructions
-CLPS2C-Compiler uses a [modified version of keystone](https://github.com/NiV-L-A/keystone) to parse the MIPS assembly instructions.<br>
-The modification is a removal of an automatic addition of a "nop" instruction after any branch and jump instructions that act as a delay slot (see [issue #405](https://github.com/keystone-engine/keystone/issues/405) ), among other fixes for the PS2 Emotion Engine CPU.
-1. Clone the CLPS2C-Compiler repository by clicking on the "Code" button and selecting "Open with Visual Studio".
-2. Download "keystone.dll" and "Keystone.Net.dll" from the ["Releases" page of this fork of keystone](https://github.com/NiV-L-A/keystone/releases).
-3. Place the 2 .dll files in the CLPS2C-Compiler/CLPS2C-Compiler folder (where the .csproj file is). They should appear in the Solution Explorer window in Visual Studio.
-4. Visual Studio should recognize the files and the project should accept the "Keystone" namespace.
-- If keystone-related errors are still present in the project:
-5. In the Solution Explorer window, expand the project entry, right click on "Dependencies" and select "Add Project Reference...".
-6. In the window that pops up, click on "Browse" on the left side and then click on "Browse..." at the bottom right.
-7. Add the "Keystone.Net.dll" file and make sure its checkbox is checked. Click "OK".
+1. Clone the CLPS2C-Compiler repository by clicking on the "Code" button and selecting "Open with Visual Studio"
+2. Run the application by clicking on "Debug" and then "Start Debugging"
+  - Do note that debug symbols are not emitted when in "Release" mode. To actually debug the application (e.g. set breakpoints) make sure to be in "Debug" mode
+
+## Release workflow
+1. In the Solution Explorer window, right click on the CLPS2C-Compiler project entry, go to "Properties", "Package" and increase the "Package Version"
+2. Remove command line arguments
+3. Remove unused using directives
+4. Change changelog
+5. Change version in documentation
+6. Update the latest pcsx2 version in `CLPS2C-Documentation.txt` for the Fill8 and Fill16 commands
+7. In the Solution Explorer window, right click on the CLPS2C-Compiler project entry and select "Publish". Use the following settings, then click "Publish":
+  <img src="CLPS2C-Compiler/Img/publish_settings.png">
 
 ## Credits
 Author:
@@ -122,5 +199,5 @@ Special thanks:
 - Icon made by Cooper941: https://www.youtube.com/@Cooper941
 - TheOnlyZac for suggesting how to handle certain scenarios: https://github.com/TheOnlyZac
 - Testing done by zzamizz: https://github.com/zzamizz
-- MIPS assembler engine from Keystone-engine: https://github.com/NiV-L-A/keystone
 - commandline by commandlineparser: https://github.com/commandlineparser/commandline
+- nocash symbol documentation: https://problemkaputt.de/gbatek-symbolic-debug-info.htm

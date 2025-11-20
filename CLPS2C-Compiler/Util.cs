@@ -1,7 +1,7 @@
-﻿using System.Globalization;
+﻿using System.Diagnostics;
+using System.Globalization;
+using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Diagnostics;
-using Keystone;
 
 namespace CLPS2C_Compiler
 {
@@ -37,18 +37,41 @@ namespace CLPS2C_Compiler
                 FullLine = line;
                 Traceback = new();
 
-                // (\(.*\))|("(?:\\.|[^"])*"?)|(\+\s*(("(?:\\.|[^"])*"?)|([^+"]+?))?(?=\+|$| |,))|(,("?)([^,"]+?)\8(?=,|$| |\+))|([^ \t\n\r\f\v(+,]+)
+                // (\(.*\))|("(?:\\.|[^"])*"?)|(\+\s*(("(?:\\.|[^"])*"?)|([^+"]+?))?(?=\+|$| |,))|(,("?) *([^,"]+?)\8(?=,|$| |\+))|([^ \t\n\r\f\v(+,]+)
                 // Order of precedence:
                 // (\(.*\)) - In parenthesis, this is one element: (test "test" test, test)
                 // ("(?:\\.|[^"])*"?) - In double quotes, taking into account escaped ". this is one element: "test \"test\" test"
                 // (\+\s*(("(?:\\.|[^"])*"?)|([^+"]+?))?(?=\+|$| |,)) - + symbol, any white space, string (see above) or word. With the ? before the last group so that it matches '+'
                 // In the following: +1+2+3+4+ 5+"6+   7"+    8
                 // The elements are +1,+2,+3,+4,+ 5,+"6+   7",+    8
-                // (,("?)([^,"]+?)\8(?=,|$| |\+)) - Separated by comma
+                // (,("?) *([^,"]+?)\8(?=,|$| |\+)) - Separated by comma, with any white space after the comma
                 // ([^ \t\n\r\f\v(+,]+) - Any other word. This is \S, and '(', '+', ','
-                MatchCollection Matches = Regex.Matches(line, @"(\(.*\))|(""(?:\\.|[^""])*""?)|(\+\s*((""(?:\\.|[^""])*""?)|([^+""]+?))?(?=\+|$| |,))|(,(""?)([^,""]+?)\8(?=,|$| |\+))|([^ \t\n\r\f\v(+,]+)");
+                MatchCollection Matches = Regex.Matches(line, @"(\(.*\))|(""(?:\\.|[^""])*""?)|(\+\s*((""(?:\\.|[^""])*""?)|([^+""]+?))?(?=\+|$| |,))|(,(""?) *([^,""]+?)\8(?=,|$| |\+))|([^ \t\n\r\f\v(+,]+)");
                 Type = Matches[0].Value.ToUpper();
                 Data = Matches.Skip(1).Take(Matches.Count - 1).Select(item => item.Value).ToList(); // Data has every word except first
+            }
+
+            public Command_t(string line, Command_t sourceCommand, bool replaceTypeAndData = false)
+            {
+                var tmp = new Command_t(line);
+                ID = sourceCommand.ID;
+                FullLine = sourceCommand.FullLine;
+                Traceback = sourceCommand.Traceback;
+                Type = tmp.Type;
+                // Data = tmp.Data;
+
+                if (replaceTypeAndData)
+                {
+                    //Type = sourceCommand.Data[0].ToUpper();
+                    Data = sourceCommand.Data.Skip(1).ToList();
+                }
+                else
+                {
+                    //Type = sourceCommand.Type;
+                    //Data = sourceCommand.Data;
+
+                    Data = tmp.Data;
+                }
             }
 
             public void AppendToTraceback(string file, string fullLine, int lineIdx)
@@ -76,6 +99,7 @@ namespace CLPS2C_Compiler
                     Output = Output,
                     Traceback = Traceback.Select(item => item).ToList()
                 };
+
                 return Clone;
             }
         }
@@ -104,7 +128,7 @@ namespace CLPS2C_Compiler
 
             public Function_t(Command_t currentCommand)
             {
-                Match Match = Regex.Match(currentCommand.FullLine, @"Function (\w+)\(([^)]*)\)");
+                Match Match = Regex.Match(currentCommand.FullLine, @"Function (\w+)\(([^)]*)\)", RegexOptions.IgnoreCase);
                 
                 // Wrong syntax
                 if (!Match.Success)
@@ -127,7 +151,6 @@ namespace CLPS2C_Compiler
         {
             public Command_t? Command;
             public ERROR ErrorValue;
-            public KeystoneError KeystoneErrorValue;
         }
 
         public static List<string> TextCleanUp(List<string> lines)
@@ -140,10 +163,10 @@ namespace CLPS2C_Compiler
 
         public static List<string> RemoveComments(List<string> lines)
         {
-            string Code = string.Join(Program._newLine, lines);
+            string Code = string.Join(Program.newLine, lines);
             Code = RemoveMultiLineComments(Code);
             Code = RemoveSingleLineComments(Code);
-            lines = Code.Split(new[] { Program._newLine }, StringSplitOptions.None).ToList();
+            lines = Code.Split(new[] { Program.newLine }, StringSplitOptions.None).ToList();
             return lines;
         }
 
@@ -165,8 +188,8 @@ namespace CLPS2C_Compiler
                 else
                 {
                     // It's a comment, count new lines
-                    int newLinesCount = match.Value.Split(Program._newLine).Length - 1;
-                    return string.Concat(Enumerable.Repeat(Program._newLine, newLinesCount));
+                    int newLinesCount = match.Value.Split(Program.newLine).Length - 1;
+                    return string.Concat(Enumerable.Repeat(Program.newLine, newLinesCount));
                 }
             });
 
@@ -190,9 +213,9 @@ namespace CLPS2C_Compiler
                 else
                 {
                     // It's a comment
-                    if (match.Value.EndsWith(Program._newLine))
+                    if (match.Value.EndsWith(Program.newLine))
                     {
-                        return Program._newLine;
+                        return Program.newLine;
                     }
                     return ""; // If the comment doesn't end with a new line (for example, when the comment is at the last line)
                 }
@@ -203,48 +226,30 @@ namespace CLPS2C_Compiler
 
         public static string PrintError(ErrorInfo_t errorInfo)
         {
-            string Tmp = "ERROR: ";
-            if (errorInfo.ErrorValue == ERROR.OK)
+            var version = Assembly.GetExecutingAssembly()
+                              .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                              ?.InformationalVersion;
+            if (version!.Contains('+'))
             {
-                // Keystone error
-                if (errorInfo.KeystoneErrorValue != KeystoneError.KS_ERR_OK)
-                {
-                    Tmp += $"{Engine.ErrorToString(errorInfo.KeystoneErrorValue)} at line {errorInfo.Command!.Traceback.First().LineIdx + 1} in file {errorInfo.Command.Traceback.First().FilePath}{Program._newLine}";
-
-                    if (errorInfo.KeystoneErrorValue == KeystoneError.KS_ERR_ASM_SYMBOL_MISSING)
-                    {
-                        // b notDefinedLabel
-                        // Tmp += $"The following symbol was referenced but it does not exist in the current context: {errorInfo.Command.FullLine}{Program._newLine}";
-                        // Tmp += $"Line that produced the error:{Program._newLine}ASM_END";
-                        Tmp += $"The Keystone engine could not find a symbol. This usually occurs because there's a branch/jump instruction to a label which has not been defined.";
-                    }
-                    else if (errorInfo.KeystoneErrorValue == KeystoneError.KS_ERR_ASM_MNEMONICFAIL) 
-                    {
-                        // lqw t1,0x002DE2F0 (no opcode); %li $t0,1 (% character)
-                        Tmp += $"The Keystone engine could not recognize an opcode. Note that not all opcodes supported by the PS2's MIPS R5900 CPU are supported in Keystone.";
-                    }
-                    else if (errorInfo.KeystoneErrorValue == KeystoneError.KS_ERR_ASM_INVALIDOPERAND)
-                    {
-                        // lw t1,0x002DE2F0 (no $)
-                        Tmp += $"The Keystone engine could not correctly parse the assembly instruction.{Program._newLine}This usually occurs because the dollar sign (\"$\") symbol is missing before referencing a register (\"t1\" instead of \"$t1\"), or because of an invalid number (for example, in the line \"lw $t1,0xq\", \"0xq\" is not a valid hexadecimal number).";
-                    }
-                    Tmp += $"{Program._newLine}{Program._newLine}";
-                }
-            }
-            else
-            {
-                // CLPS2C error
-                Tmp += $"{Enum.GetName(typeof(ERROR), errorInfo.ErrorValue)} at line {errorInfo.Command!.Traceback.First().LineIdx + 1} in file {errorInfo.Command.Traceback.First().FilePath}{Program._newLine}";
-                Tmp += $"{ErrorMessages[errorInfo.ErrorValue]}{Program._newLine}{Program._newLine}";
+                version = version!.Split('+')[0];
             }
 
-            Tmp += $"Line that produced the error:{Program._newLine}{errorInfo.Command!.FullLine}";
-            Tmp += $"{Program._newLine}{Program._newLine}Traceback:";
+            string Tmp = $"CLPS2C-Compiler v{version} {DateTime.Now}{Program.newLine}{Program.newLine}";
+            Tmp += $"ERROR: ";
+            Tmp += $"{Enum.GetName(errorInfo.ErrorValue)}";
+            Tmp += $" at line {errorInfo.Command!.Traceback.First().LineIdx + 1}";
+            Tmp += $" in file {errorInfo.Command.Traceback.First().FilePath}{Program.newLine}";
+            Tmp += $"{ErrorMessages[errorInfo.ErrorValue]}{Program.newLine}{Program.newLine}";
+            
+            Tmp += $"Line that produced the error:{Program.newLine}{errorInfo.Command!.FullLine}";
+
+            Tmp += $"{Program.newLine}{Program.newLine}Traceback:";
             errorInfo.Command.Traceback.Reverse();
             foreach (Command_t.Traceback_t item in errorInfo.Command.Traceback)
             {
-                Tmp += $"{Program._newLine}at {item.FilePath}:{item.LineIdx + 1} - {item.FullLine}";
+                Tmp += $"{Program.newLine}at {item.FilePath}:{item.LineIdx + 1} - {item.FullLine}";
             }
+
             return Tmp;
         }
 
@@ -310,6 +315,24 @@ namespace CLPS2C_Compiler
             return -1;
         }
 
+        public static int GetNthOccuranceInString(string input, char value, int n)
+        {
+            int tmp = 0;
+            for (int i = 0; i < input.Length; i++)
+            {
+                if (input[i] == value)
+                {
+                    if (tmp == n)
+                    {
+                        // found
+                        return i;
+                    }
+                    tmp++;
+                }
+            }
+            return -1;
+        }
+
         public static bool StartsAndEndsWithQuotes(string value)
         {
             if (value.StartsWith("\"") && value.EndsWith("\"") && value.Length != 1)
@@ -333,7 +356,7 @@ namespace CLPS2C_Compiler
                                array[(i + 1) * 4 - 2].ToString("X2") +
                                array[(i + 1) * 4 - 3].ToString("X2") +
                                array[(i + 1) * 4 - 4].ToString("X2");
-                Output += $"{Program._newLine}{address} {value}";
+                Output += $"{Program.newLine}{address} {value}";
             }
 
             switch (WXCount)
@@ -342,19 +365,19 @@ namespace CLPS2C_Compiler
                     break;
                 case 1:
                     // W8
-                    Output += $"{Program._newLine}0{((int)(Address + W32Count * 4)).ToString("X8").Substring(1)} ";
+                    Output += $"{Program.newLine}0{((int)(Address + W32Count * 4)).ToString("X8").Substring(1)} ";
                     Output += $"000000{array[array.Length - 1].ToString("X2")}";
                     break;
                 case 2:
                     // W16
-                    Output += $"{Program._newLine}1{((int)(Address + W32Count * 4)).ToString("X8").Substring(1)} ";
+                    Output += $"{Program.newLine}1{((int)(Address + W32Count * 4)).ToString("X8").Substring(1)} ";
                     Output += $"0000{array[array.Length - 1].ToString("X2") + array[array.Length - 2].ToString("X2")}";
                     break;
                 case 3:
                     // W16 + W8
-                    Output += $"{Program._newLine}1{((int)(Address + W32Count * 4)).ToString("X8").Substring(1)} ";
+                    Output += $"{Program.newLine}1{((int)(Address + W32Count * 4)).ToString("X8").Substring(1)} ";
                     Output += $"0000{array[array.Length - 2].ToString("X2")}{array[array.Length - 3].ToString("X2")}";
-                    Output += $"{Program._newLine}0{((int)(Address + W32Count * 4 + 2)).ToString("X8").Substring(1)} ";
+                    Output += $"{Program.newLine}0{((int)(Address + W32Count * 4 + 2)).ToString("X8").Substring(1)} ";
                     Output += $"000000{array[array.Length - 1].ToString("X2")}";
                     break;
             }
@@ -368,20 +391,12 @@ namespace CLPS2C_Compiler
 
         public static bool IsAddressValid(string address)
         {
-            Match match = Regex.Match(address, @"^-?(0x)?[0-9A-Fa-f]{1,8}$");
-            if (!match.Success)
-            {
-                return false;
-            }
-            return true;
+            return Regex.IsMatch(address, @"^-?(0x)?[0-9A-Fa-f]{1,8}$");
         }
 
         public static bool IsIntValueValid(string value)
         {
-            Match Match = Regex.Match(value, @"^-?(0x){1}[0-9A-Fa-f]{1,8}$|^-?(?!0x)\d+$");
-            if (!Match.Success)
-                return false;
-            return true;
+            return Regex.IsMatch(value, @"^-?(0x){1}[0-9A-Fa-f]{1,8}$|^-?(?!0x)\d+$");
         }
 
         public static bool IsFloatValueValid(string value)
@@ -479,7 +494,7 @@ namespace CLPS2C_Compiler
             var SetID = FindClosestLowerElement(PossibleSets, id);
             if (SetID == -1)
             {
-                return new List<string>();
+                return [];
             }
 
             List<string> Output = PossibleSets.FirstOrDefault(item => item.ID == SetID)!.Values.ToList();
@@ -569,18 +584,6 @@ namespace CLPS2C_Compiler
             return false;
         }
 
-        public static string ReplaceTRegisters(string value)
-        {
-            // TO-DO: It would be better to handle this inside keystone itself
-            // With keystone set to MIPS64 mode, the first 7 temporary registers do not produce the same result as Mips32:
-            // https://github.com/keystone-engine/keystone/issues/421
-
-            return value.Replace("t0", "8").Replace("t1", "9")
-                         .Replace("t2", "10").Replace("t3", "11")
-                         .Replace("t4", "12").Replace("t5", "13")
-                         .Replace("t6", "14").Replace("t7", "15");
-        }
-
         public enum ERROR : int
         {
             OK,
@@ -598,12 +601,25 @@ namespace CLPS2C_Compiler
             INCLUDE_COMMAND_INSIDE_FUNCTION_DEFINITION,
             INCLUDE_STACK_OVERFLOW,
             CALL_STACK_OVERFLOW,
-            ARGUMENT_COUNT_MISMATCH
+            ARGUMENT_COUNT_MISMATCH,
+            MISSING_QUOTES,
+            LENGTH_MUST_BE_DIVISIBLE_BY_2,
+            LENGTH_MUST_BE_DIVISIBLE_BY_4,
+
+            ASM_UNKNOWN_MNEMONIC,
+            ASM_WRONG_SYNTAX,
+            ASM_UNDEFINED_LABEL,
+            ASM_LABEL_ALREADY_DEFINED,
+            ASM_UNKNOWN_REGISTER,
+            ASM_WRONG_DEST,
+            ASM_WRONG_INTERLOCK,
+            ASM_IMMEDIATE_VALUE_INVALID,
+            ASM_SHIFT_AMOUNT_VALUE_INVALID,
         }
 
         public static Dictionary<ERROR, string> ErrorMessages = new()
         {
-            { ERROR.UNKNOWN_COMMAND, "An unknown command has been detected. Check the list of commands supported in the documentation -> \"List of commands\" section" },
+            { ERROR.UNKNOWN_COMMAND, "An unknown command has been detected. Check the list of commands supported in the documentation -> \"List of commands\" section." },
             { ERROR.WRONG_SYNTAX, "There is something wrong with the command's syntax. Check the list of commands and their syntaxes in the documentation -> \"List of commands\" section." },
             { ERROR.ADDRESS_INVALID, "The (ADDRESS) argument was invalid. Check the conditions for a valid (ADDRESS) in the documentation -> \"Description and Settings\" section." },
             { ERROR.VALUE_INVALID, "The (VALUE) argument was invalid. Check the conditions for a valid (VALUE) in the documentation -> \"Description and Settings\" section." },
@@ -617,7 +633,21 @@ namespace CLPS2C_Compiler
             { ERROR.INCLUDE_COMMAND_INSIDE_FUNCTION_DEFINITION, "An \"Include\" command was detected inside a \"Function\" definition. A \"Function\" scope must not have an \"Include\" command inside." },
             { ERROR.INCLUDE_STACK_OVERFLOW, "An \"Include\" command was trying to include an already included file. This would create infinite recursion and result in a StackOverflowException.\nA file must not include itself, or include another file which includes one of the previous files." },
             { ERROR.CALL_STACK_OVERFLOW, "A \"Call\" command was trying to call the function in which it is defined. This would create infinite recursion and result in a StackOverflowException.\nRecursive functions are not allowed." },
-            { ERROR.ARGUMENT_COUNT_MISMATCH, "The count of the arguments in the \"Function\" definition and the count of the arguments passed to the function with the \"Call\" command are not equal.\nThe count of the arguments in the \"Function\" command and the ones in the \"Call\" command must be equal." }
+            { ERROR.ARGUMENT_COUNT_MISMATCH, "The count of the arguments in the \"Function\" definition and the count of the arguments passed to the function with the \"Call\" command are not equal.\nThe count of the arguments in the \"Function\" command and the ones in the \"Call\" command must be equal." },
+            { ERROR.MISSING_QUOTES, "The argument must start and end with quotes." },
+            { ERROR.LENGTH_MUST_BE_DIVISIBLE_BY_2, "The length argument must be divisible by 2." },
+            { ERROR.LENGTH_MUST_BE_DIVISIBLE_BY_4, "The length argument must be divisible by 4." },
+
+            // EEAssembler
+            { ERROR.ASM_UNKNOWN_MNEMONIC, "The assembler could not recognize an opcode. Note that not all opcodes supported by the PS2's MIPS R5900 CPU are supported in CLPS2C." },
+            { ERROR.ASM_WRONG_SYNTAX, "The assembler could not assemble the instruction. Make sure its syntax is correct." },
+            { ERROR.ASM_UNDEFINED_LABEL, "The assembler could not find a label. This usually occurs because there's a branch instruction to a label which has not been defined." },
+            { ERROR.ASM_LABEL_ALREADY_DEFINED, "The assembler has already encountered a label with the same name. The same assembly scope can't have more than one label with the same name.\nNote that labels are case-insensetive." },
+            { ERROR.ASM_UNKNOWN_REGISTER, "The assembler could not assemble the instruction because an unknown register has been detected. Make sure its syntax is correct." },
+            { ERROR.ASM_WRONG_DEST, "The \"dest\" field is wrong. The \"dest\" field should have length between 1 and 4, in which the allowed letters are \"x\", \"y\", \"z\" and \"w\", and each letter must only appear once." },
+            { ERROR.ASM_WRONG_INTERLOCK, "The \"interlock\" field is wrong. The \"interlock\" field should have length of 1 and the only allowed letter is \"i\"." },
+            { ERROR.ASM_IMMEDIATE_VALUE_INVALID, "The \"immediate\" field is wrong." },
+            { ERROR.ASM_SHIFT_AMOUNT_VALUE_INVALID, "The \"shift amount\" field is wrong. The \"shift amount\" field should be between 0x00 and 0x1F." },
         };
     }
 }
