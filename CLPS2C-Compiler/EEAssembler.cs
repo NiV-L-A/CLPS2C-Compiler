@@ -37,7 +37,7 @@ namespace CLPS2C_Compiler
             "PMADDUW", "PSRAVW", "PINTEH", "PMULTUW",
             "PCPYUD", "POR", "PNOR", "ADD.S",
             "SUB.S", "MUL.S", "DIV.S", "MADD.S",
-            "MSUB.S"
+            "MSUB.S", "DADDU"
         };
 
         // Labels defined in the same assembly scope. Name and address.
@@ -668,7 +668,10 @@ namespace CLPS2C_Compiler
                     || command.Type == "LQC2"
                     || command.Type == "SQC2")
                 {
-                    // All the instructions with format rt,offset(base)
+                    // The load and store instructions (the ones with the "rt,offset(base)" format) can be abbreviated to "rt,address" where address is a 32-bit address.
+                    // They are expanded by using the provided register as the base and a lui instruction.
+                    // In the case of lwc1, swc1, lqc2 and sqc2, the $at register is used as the base register for the lui instruction.
+                    // This is because the lui instruction only supports GPR registers (e.g. we can't do "lui $f0,0x00FB").
 
                     // lw $t0,0x1 -> lw $t0,0x1($zero)
                     // lw $t0,0x7FFF -> lw $t0,0x7FFF($zero)
@@ -685,6 +688,8 @@ namespace CLPS2C_Compiler
                     // lw $t0,0x12345678 -> lui $t0,0x1234 + lw $t0,0x5678($t0)
                     // lw $t0,0xFB1580 -> lui $t0,0x00FB + lw $t0,0x1580($t0)
                     // lw $t0,0xFB8580 -> lui $t0,0x00FC + lw $t0,-0x8580($t0)
+
+                    // lwc1 $f0,0xFB1580 -> lui $at,0x00FB + lwc1 $f0,0x1580($at)
 
                     if (command.Data.Count == 3)
                     {
@@ -756,7 +761,6 @@ namespace CLPS2C_Compiler
                     if (immediate < 0x8000)
                     {
                         // If it's less than 0x8000, we can use the $zero register. This is rare. This is only used if you load from address 0 to address 0x7FFF
-
                         Command_t loadStoreCommand = new($"{command.Type} {register},0x{immediate:X}($zero)", command); // lw $t0,0x1580($t0)
                         operand = loadStoreCommand.Data[1].TrimStart(',')/*.Trim()*/;
                         int parenStart = operand.IndexOf('(');
@@ -781,9 +785,22 @@ namespace CLPS2C_Compiler
                             lower -= 0x10000;
                         }
 
-                        expanded.Add(new($"LUI {register},0x{upper:X}", command)); // lui $t0,0xFB
+                        string sourceRegister = register;
+                        if (command.Type == "LWC1" || command.Type == "SWC1"
+                         || command.Type == "LQC2" || command.Type == "SQC2")
+                        {
+                            // For floating point and vector instructions we can't use the target register as the source register
+                            // Let's use $at instead
+                            sourceRegister = "$at";
+                        }
 
-                        Command_t loadStoreCommand = new($"{command.Type} {register},0x{lower:X}({register})", command); // lw $t0,0x1580($t0)
+                        // lui $t0,0xFB
+                        // lui $at,0xFB
+                        expanded.Add(new($"LUI {sourceRegister},0x{upper:X}", command));
+
+                        // lw $t0,0x1580($t0)
+                        // lwc1 $f0,0x1580($at)
+                        Command_t loadStoreCommand = new($"{command.Type} {register},0x{lower:X}({sourceRegister})", command);
                         operand = loadStoreCommand.Data[1].TrimStart(',');
                         int parenStart = operand.IndexOf('(');
                         string offsetStr = operand.Substring(0, parenStart); // 0x58
@@ -819,8 +836,16 @@ namespace CLPS2C_Compiler
                     string register = command.Data[0];
                     if (immediate < 0x10000)
                     {
+                        // Only 1 instruction, either addiu or ori
+                        string instruction = "ORI";
+                        if (immediate < 0)
+                        {
+                            instruction = "ADDIU";
+                        }
+
+                        // li $t0,-1 -> addiu $t0,$zero,0xFFFFFFFF
                         // li $t0,0x8123 -> ori $t0,$zero,0x8123
-                        expanded.Add(new($"ORI {register},$zero,0x{immediate:X}", command));
+                        expanded.Add(new($"{instruction} {register},$zero,0x{immediate:X}", command));
                     }
                     else
                     {

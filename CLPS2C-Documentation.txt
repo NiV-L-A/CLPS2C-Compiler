@@ -2,7 +2,7 @@
 
 
 CLPS2C (Custom Language for PlayStation 2 Cheats) - Compiler
-Version: 1.0.4
+Version: 1.0.5
 GitHub: https://github.com/NiV-L-A/CLPS2C-Compiler
 
 
@@ -354,8 +354,10 @@ ASM_END
         beqzl $t0,label   -> beql $t0,$zero,label
         bnez $t0,label    -> bne $t0,$zero,label
         bnezl $t0,label   -> bnel $t0,$zero,label
-        li $t0,0x1234     -> ori $t0,$zero,0x1234
+        li $t0,0x1234     -> ori $t0,$zero,0x1234 // If the immediate value is positive, the instruction is expanded to "ori"
         li $t0,0x8123     -> ori $t0,$zero,0x8123
+        li $t0,-1         -> addiu $t0,$zero,-0x1 // If the immediate value is negative, the instruction is expanded to "addiu"
+        li $t0,-0x123     -> addiu $t0,$zero,-0x123
         li $t0,0x12340000 -> lui $t0,$zero,0x1234
         li $t0,0x12345678 -> lui $t0,$zero,0x1234 + ori $t0,$t0,0x5678
         nop               -> sll $zero,$zero,0
@@ -370,7 +372,24 @@ ASM_END
         paddsw, psubsw, pextlw, ppacw, paddsh, psubsh, pextlh, ppach, paddsb, psubsb, pextlb, ppacb, pceqw, pminw, padsbh, pceqh,
         pminh, pceqb, padduw, psubuw, pextuw, ppacw, padduh, psubuh, pextuh, ppach, paddub, psubub, pextub, qfsrv, pmaddw, psllvw,
         psrlvw, pmsubw, pinth, pmultw, pcpyld, pmaddh, phmadh, pand, pxor, pmsubh, phmsbh, pmulth, pmadduw, psravw, pinteh, pmultuw,
-        pcpyud, por, pnor, add.s, sub.s, mul.s, div.s, madd.s, msub.s
+        pcpyud, por, pnor, add.s, sub.s, mul.s, div.s, madd.s, msub.s, daddu
+    The load and store instructions (the ones with the "rt,offset(base)" format) can be abbreviated to "rt,address" where address is a 32-bit address.
+        They are expanded by using the provided register as the base and a lui instruction.
+        In the case of lwc1, swc1, lqc2 and sqc2, the $at register is used as the base register for the lui instruction.
+        This is because the lui instruction only supports GPR registers (e.g. we can't do "lui $f0,0x00FB").
+        For example:
+            lw $t0,0x1        -> lw $t0,0x1($zero)
+            lw $t0,0x7FFF     -> lw $t0,0x7FFF($zero)
+            lw $t0,0x8000     -> lui $t0,0x1 + lw $t0,-0x8000($t0)
+            lw $t0,0xFFFF     -> lui $t0,0x1 + lw $t0,-0xFFFF($t0)
+            lw $t0,0x10000    -> lui $t0,0x1 + lw $t0,0x0($t0)
+            lw $t0,0x17FFF    -> lui $t0,0x1 + lw $t0,0x7FFF($t0)
+            lw $t0,0x18000    -> lui $t0,0x2 + lw $t0,-0x8000($t0)
+            lw $t0,0x1FFFF    -> lui $t0,0x2 + lw $t0,-0x1($t0)
+            lw $t0,0x12345678 -> lui $t0,0x1234 + lw $t0,0x5678($t0)
+            lw $t0,0xFB1580   -> lui $t0,0x00FB + lw $t0,0x1580($t0)
+            lw $t0,0xFB8580   -> lui $t0,0x00FC + lw $t0,-0x8580($t0)
+            lwc1 $f0,0xFB1580 -> lui $at,0x00FB + lwc1 $f0,0x1580($at)
     The following instructions will be expanded by placing the "$zero" register in the "rt" field.
         dsllv $t0,$t1 -> dsllv $t0,$zero,$t1
         dsrlv $t0,$t1 -> dsrlv $t0,$zero,$t1

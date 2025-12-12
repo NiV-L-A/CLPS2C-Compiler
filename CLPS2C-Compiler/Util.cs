@@ -527,9 +527,9 @@ namespace CLPS2C_Compiler
         static int FindClosestLowerElement(List<LocalVar_t> listSets, int targetValue)
         {
             int closestLowerElement = -1;
-            var q = listSets.Select(item => item.ID).ToList();
+            List<int> ids = listSets.Select(item => item.ID).ToList();
 
-            foreach (int number in q)
+            foreach (int number in ids)
             {
                 int difference = targetValue - number;
                 if (difference < 0)
@@ -537,6 +537,7 @@ namespace CLPS2C_Compiler
                     // not found based on the id
                     break;
                 }
+
                 closestLowerElement = number;
             }
             return closestLowerElement;

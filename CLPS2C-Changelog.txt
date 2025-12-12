@@ -1,3 +1,13 @@
+Version 1.0.5 (12/12/2025)
+    - Assembly:
+        - The "li" pseudo-instruction can now output an "addiu" instruction instead of an "ori" instruction if the immediate value is negative.
+        - The "daddu" instruction can now be abbreviated (2 arguments instead of 3).
+    - Fixed bugs:
+        - Assembly: abbreviating lwc1, swc1, lqc2 and sqc2 instructions (e.g. "lwc1 $f0,0xFB1580") would throw an "ASM_UNKNOWN_REGISTER" error. For these 4 opcodes, the $at register is used as the base.
+    - Changed documentation:
+        - Added a section in the ASM_START command that specifies that load and store instructions (the ones with the "rt,offset(base)" format) can be abbreviated to "rt,address" where address is a 32-bit address.
+    - Changed .sln file to .slnx
+
 Version 1.0.4 (20/11/2025)
     - Updated to .net10.
     - The "ERROR" output now includes the CLPS2C version, the date and time at the moment the input file was compiled.
